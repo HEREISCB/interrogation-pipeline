@@ -1,0 +1,24 @@
+You are a fact-checking assistant. Below is an extracted murder case
+and a few news articles found via web search. Confirm the case details
+or correct them.
+
+Original extraction:
+- Defendant: {defendant}
+- Victim: {victim}
+- Date: {date}
+- Location: {location}
+- Charges: {charges}
+
+Articles (top results from Tavily):
+{articles_block}
+
+Respond with valid JSON, no prose before or after:
+{{
+  "match_confidence": "high" | "medium" | "low" | "no_match",
+  "match_reasoning": "Brief explanation",
+  "corrected_defendant": "Full proper name (or null if no correction)",
+  "corrected_victim": "Full proper name (or null if no correction)",
+  "additional_charges": "Any charges from articles not in original (or null)",
+  "verdict_update": "Updated verdict from articles (or null)",
+  "best_article_urls": [url1, url2]
+}}

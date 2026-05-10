@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Build Plan, for Ayush</title>
+<style>
+  /* ─── Print-first design ─── */
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+  }
+  @media print {
+    .no-print { display: none !important; }
+    a { color: #000 !important; text-decoration: none !important; }
+    h1, h2, h3 { page-break-after: avoid; }
+    p, li, blockquote { page-break-inside: avoid; }
+    section { page-break-inside: auto; }
+    .pagebreak { page-break-before: always; }
+  }
+
+  :root {
+    --ink: #15171a;
+    --soft: #5b6068;
+    --line: #e5e7eb;
+    --accent: #0b66c3;
+    --bg-soft: #f7f8fa;
+    --warn: #b45309;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: #fff;
+    line-height: 1.55;
+    font-size: 11.5pt;
+  }
+  body {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 28px 64px;
+  }
+  .toolbar {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0 12px;
+    margin: -32px -28px 28px;
+    padding-left: 28px;
+    padding-right: 28px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    z-index: 10;
+  }
+  .toolbar button {
+    padding: 7px 14px;
+    border: 1px solid var(--ink);
+    border-radius: 6px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .toolbar .hint {
+    color: var(--soft);
+    font-size: 12px;
+  }
+  h1 {
+    font-size: 28pt;
+    line-height: 1.15;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .subhead {
+    color: var(--soft);
+    font-size: 11.5pt;
+    margin-bottom: 28px;
+  }
+  h2 {
+    font-size: 16pt;
+    margin: 28px 0 10px;
+    letter-spacing: -0.005em;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 6px;
+  }
+  h3 {
+    font-size: 12.5pt;
+    margin: 18px 0 6px;
+  }
+  p { margin: 0 0 12px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  strong { color: var(--ink); }
+  a { color: var(--accent); }
+  code {
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+    background: var(--bg-soft);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.92em;
+  }
+  blockquote {
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    background: var(--bg-soft);
+    border-left: 3px solid var(--accent);
+    color: var(--ink);
+  }
+  .tldr {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 0 0 24px;
+  }
+  .tldr p { margin: 0; }
+  .signoff {
+    margin-top: 36px;
+    color: var(--soft);
+    font-style: italic;
+  }
+  .meta {
+    margin-top: 8px;
+    color: var(--soft);
+    font-size: 10pt;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button onclick="window.print()">Print / Save as PDF</button>
+  <span class="hint">In the print dialog, choose "Save as PDF" as the destination.</span>
+</div>
+
+<h1>Hey Ayush, here's what I'm building for you</h1>
+<p class="subhead">From: Chaitanya &nbsp;·&nbsp; Project: YouTube Interrogation / Bodycam case-mining pipeline</p>
+
+<p>Look bro, I went through your whole handoff doc, the recording, the prompt PDF, the channels sheet, the works. Wanted to lay out exactly what I'm putting together for you in plain English before I start writing code, so we're on the same page and you can tell me if anything's off.</p>
+
+<div class="tldr">
+  <p><strong>TL;DR.</strong> A daily web dashboard you open in your browser. It checks your snipe channels every day, finds murder cases worth FOIA-ing, dedupes against your existing Trello board, and shows everything (including what the AI rejected) in one screen. You click "Send to Trello" on the ones you want pushed, they go into a NEW Trello board, not your main one. Nothing auto-adds anywhere without you saying so.</p>
+</div>
+
+<h2>What this fixes for you</h2>
+<p>You said it best in the recording, you can't manually watch hundreds of videos a week, and your current setup is half-built and Mac-locked. Here's what changes:</p>
+<ol>
+  <li><strong>You stop missing videos.</strong> Right now if your Mac is asleep or your terminal crashes mid-run, you lose visibility. New system has a 24h lookback window plus a weekly safety-net job. A video uploaded at 11pm IST? Caught. A run failed yesterday? Caught next run.</li>
+  <li><strong>No more "did the AI miss something?" anxiety.</strong> The dashboard shows the rejected videos at the bottom of the page with the AI's stated reason. One click to override if you spot a mistake.</li>
+  <li><strong>Cross-platform.</strong> Runs on Mac or Windows. No more <code>caffeinate -s</code>, no more launchd, no more <code>~/Desktop</code> hardcoded paths.</li>
+  <li><strong>Real visibility.</strong> Calendar view to scroll back through any day. Stats panel showing "we found 1,847 of 2,008 videos posted on P4 channels". You can actually see what the system is doing.</li>
+  <li><strong>Your main Trello board stays clean.</strong> Nothing auto-pushes there. New cases land in a separate "triage" board. You promote the ones you want with a click.</li>
+</ol>
+
+<h2>How it works (one paragraph)</h2>
+<p>Every day at the time you set, a Python program wakes up, hits each P4 channel's YouTube RSS feed (free, unauthenticated, no rate-limit), finds new videos, downloads only the new ones' captions through your Webshare proxies, sends each transcript to Claude Haiku with the homicide-only prompt you gave me, runs Tavily on the accepted ones to fix misspelled names, dedupes against BOTH your existing main Trello board AND the new triage board, then drops everything into the dashboard for you to review. You open <code>localhost:8765</code>, see today's results, click through, push what you like to Trello.</p>
+
+<h2>What you'll see in the browser</h2>
+
+<h3>Today's page, the main view</h3>
+<ul>
+  <li><strong>Top:</strong> a stats bar, "P4 coverage: 1,847 of 2,008 videos (92%), 612 cases accepted, 487 in Trello"</li>
+  <li><strong>Middle:</strong> today's accepted cases as cards. Each shows defendant, victim, charges, drama rating, video link, AI summary. Buttons: <strong>Send to Trello</strong>, <strong>Skip</strong>, <strong>Mark reviewed</strong>.</li>
+  <li><strong>Bottom (collapsed by default):</strong> rejected cases with the AI's stated rejection reason. Click any one to expand the transcript and override if the AI got it wrong.</li>
+  <li>A red banner at the top if anything's broken, Anthropic credits out, Webshare bandwidth gone, cookies stale, etc.</li>
+</ul>
+
+<h3>Calendar page</h3>
+<p>Month view, color-coded by activity. Click any day to see exactly what the system found that day. Failed days highlighted red.</p>
+
+<h3>Channels page</h3>
+<p>Every channel with its YT total, our coverage, last seen time. Toggle a channel on/off. Move it between pipelines (P1/P2/P3/P4) with a dropdown. Add a new channel by pasting its URL.</p>
+
+<h3>Runs page</h3>
+<p>Every daily run with status, duration, error breakdown. Click for the full event log if something went sideways.</p>
+
+<h3>Settings page</h3>
+<p>Schedule (default 24h, can do 12h or any cron), the lookback buffer (24h default, the timezone fix you asked about), API key health checks, Trello board IDs, proxy session range.</p>
+
+<h3>Stats page</h3>
+<p>Costs this week, AI override rate (so we can tell if the prompt needs tuning), per-channel coverage breakdown.</p>
+
+<h2>The timezone thing you flagged</h2>
+<p>You mentioned a video uploaded at 11pm IST sometimes lands on the "wrong" day. Fixed:</p>
+<ul>
+  <li>Everything internal is UTC. Frontend formats to IST for display only.</li>
+  <li>Discovery uses a 24h lookback (configurable to 48h or whatever you want). So even if a daily run runs late or skips, the next run still sees yesterday's late-night uploads. Re-seeing a video is free because we dedup by YouTube video ID.</li>
+  <li>A separate weekly reconciliation job sweeps each channel's full video list to catch anything RSS lagged on. Triple-redundant, a video can't fall through.</li>
+</ul>
+
+<h2>What I'm building under the hood (in case you care)</h2>
+<ul>
+  <li><strong>Backend:</strong> Python 3.12, FastAPI, APScheduler for the daily timer, SQLite for state (one file, you can back it up by copying it), SQLAlchemy ORM. Async, uses <code>httpx</code> for everything that hits the network.</li>
+  <li><strong>Frontend:</strong> React + Vite. Built once into static files that the same Python process serves. After install, you don't need Node running, only Python.</li>
+  <li><strong>Reusing your proven logic:</strong> per-video proxy rotation with 30-min blacklist on rate-limit, the <code>tv</code> player_client + <code>--no-check-certificates</code> flag set, your multi-field fuzzy dedup (defendant ≥85% + 2 of 3 of victim/state/year), the homicide-only prompt from <code>Prompt.pdf</code> with the additive drama rubric.</li>
+  <li><strong>Discovery is RSS first, yt-dlp second:</strong> RSS finds new video IDs daily (free, no rate-limit, no proxy). yt-dlp + your residential proxy only downloads captions for those specific new IDs. Bandwidth use drops dramatically vs your current "scan all videos" pattern.</li>
+</ul>
+
+<h2>Scope for v1 (what ships first)</h2>
+<p><strong>P4 only</strong>, your 13 snipe channels. That's the priority you stated. Once it's stable and proven for a week or two, P1 (your 30 new interrogation channels) is a config change, no code changes.</p>
+<p>P2 stays dormant. P3 has the DRM problem on <code>@LawAndCrimeInvestigates</code> and we agreed Whisper is out of scope, so P3 is deferred.</p>
+
+<h2>What I'm NOT building (so there are no surprises)</h2>
+<ul>
+  <li>No Whisper transcription (you said skip).</li>
+  <li>No email/Slack alerts (the dashboard banner does this job for v1; we can add later).</li>
+  <li>No multi-user / login / auth, it's localhost-only by default.</li>
+  <li>No mobile app.</li>
+</ul>
+
+<h2>What I need from you</h2>
+<p>When you're ready:</p>
+<ol>
+  <li><strong>Anthropic API key</strong> (claude-haiku access)</li>
+  <li><strong>Tavily API key</strong></li>
+  <li><strong>Webshare credentials</strong> (just confirming the residential rotating tier and the username, <code>mryzxzjm</code> per the handoff)</li>
+  <li><strong>Trello key + token + the OLD board ID</strong> (your main <code>FOIA Trials</code> board, for dedup reads)</li>
+  <li><strong>Trello NEW board</strong>, either you create a board named whatever you want and send me its ID + the target list ID, OR tell me to create one programmatically on first run. Either works.</li>
+  <li><strong>Cookie file</strong>, your <code>cookies_p4.txt</code> exported from a logged-in YouTube account in Chrome (or I'll send instructions if you want a fresh one).</li>
+</ol>
+
+<h2>Timeline reality check</h2>
+<p>You mentioned "tomorrow night" at the end of the recording. Honest answer: with the React frontend, that's tight. I can probably get you a working <strong>backend + a basic dashboard</strong> in 24 hours that does the full pipeline and lets you push to Trello, but the calendar view, stats page, and polish will take another day or two. Want me to ship in that order? (Functional first, pretty after.)</p>
+
+<h2>What "done" looks like</h2>
+<ul>
+  <li>One command: <code>python -m interrogation_pipeline</code> starts everything.</li>
+  <li>Browser to <code>localhost:8765</code>. Dashboard loads. You click "Run now". Watch the live progress.</li>
+  <li>New cases appear. You review. Push the good ones to your new Trello board.</li>
+  <li>Tomorrow it does it again on its own.</li>
+</ul>
+
+<p>That's the whole thing, bro. Tell me what to change before I start writing code.</p>
+
+<p class="signoff">— Chaitanya</p>
+
+<script>
+  // Auto-focus print on load IF user appended ?print=1 (so you can quickly bulk-print later)
+  if (location.search.includes("print=1")) {
+    setTimeout(() => window.print(), 200);
+  }
+</script>
+
+</body>
+</html>

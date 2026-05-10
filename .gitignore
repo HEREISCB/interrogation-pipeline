@@ -1,0 +1,68 @@
+# ────────────  Secrets — NEVER commit  ────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ────────────  YouTube cookies (user accounts!) ────────────
+cookie.txt
+cookies.txt
+cookies_*.txt
+backend/data/cookies/*
+!backend/data/cookies/.gitkeep
+
+# ────────────  Runtime data  ────────────
+backend/data/state.db
+backend/data/state.db-*
+backend/data/transcripts/
+backend/data/*.json
+
+# ────────────  Built artifacts  ────────────
+backend/interrogation_pipeline/static/
+frontend/dist/
+*.egg-info/
+build/
+
+# ────────────  Dependencies  ────────────
+backend/.venv/
+.venv/
+venv/
+node_modules/
+package-lock.json
+
+# ────────────  Python  ────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ────────────  Editor / OS  ────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ────────────  Project-specific local helper files  ────────────
+_*.py
+_*.json
+_*.txt
+_handoff.txt
+_extract*.py
+_channels.json
+_frames/
+
+# Source bundle artifacts the user dropped in but shouldn't be re-pushed
+Recording*.mp4
+Interrogation_Pipeline_Handoff*.docx
+Interrogation_Pipeline_Handoff*.pdf
+all_pipeline_channels.xlsx
+Prompt.docx
+Prompt.pdf
+INTERROGATION_PIPELINE_CONTEXT.md

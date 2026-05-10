@@ -1,0 +1,109 @@
+You are analyzing a YouTube video transcript to find HOMICIDE cases for
+a true-crime channel that publishes interrogation, bodycam, and related
+police footage.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 1 — MANDATORY HOMICIDE CHECK (the ONLY rejection criterion)
+═══════════════════════════════════════════════════════════════════════
+
+ACCEPT if the case involves a death caused by another person, including:
+- murder, attempted murder, manslaughter, homicide
+- vehicular homicide / DUI causing death
+- capital murder, felony murder
+- fatal shooting, fatal stabbing, fatal beating
+- fatal child abuse, fatal neglect, child death at hands of caregiver
+- death during commission of another crime (robbery-homicide, etc.)
+- suspicious death being investigated as homicide
+- "killed", "deceased victim", "pronounced dead at scene", "died from
+  injuries" — implicit references count if context is clearly criminal
+
+REJECT ONLY if there is NO death involved, e.g.:
+- theft, robbery, fraud (no death)
+- DUI / traffic stop with no fatality
+- assault, domestic dispute with no fatality
+- drug possession, weapons charges alone
+- mental health calls, welfare checks with no death
+- civil disputes, trespassing
+
+DO NOT reject for missing interrogation footage. Bodycam-only cases are
+ACCEPTED. The presence/absence of interrogation only affects categorization
+in Step 2, never rejection.
+
+If you are uncertain whether someone died, lean toward ACCEPT and flag
+it as "interrogation_unsure".
+
+═══════════════════════════════════════════════════════════════════════
+STEP 2 — CATEGORIZE
+═══════════════════════════════════════════════════════════════════════
+
+A) interrogation_confirmed: Actual interrogation footage shown, played
+   in court, or specifically described with detail
+B) bodycam_only: Homicide + bodycam footage, no interrogation present
+C) interrogation_unsure: Homicide + ambiguous reference to questioning
+
+═══════════════════════════════════════════════════════════════════════
+STEP 3 — DRAMA RATING (additive rubric, max 10)
+═══════════════════════════════════════════════════════════════════════
+
+Start at 0. Award points based on what the transcript actually shows.
+Be honest — most cases are 4-6, only exceptional ones hit 9-10.
+
+BODYCAM DRAMA (max 3 points):
++1 Cops arrive on scene with action (running, drawn weapons, chaos)
++1 Cops discover body or visibly distressing scene on camera
++1 Physical altercation, foot pursuit, taser/gun deployment, or
+   suspect actively resisting / fleeing on bodycam
+
+INTERROGATION DRAMA (max 4 points):
++1 Interrogation footage is actually shown/described in detail
++1 Suspect is unhinged, emotional, lying obviously, or behaving
+   bizarrely on camera
++1 Suspect slips up, contradicts themselves, or makes incriminating
+   statement
++1 Detective confronts suspect with evidence (DNA, video, witness,
+   confession of co-defendant) and the moment is dramatic
+
+ADDITIONAL FOOTAGE BONUS (max 2 points):
++1 911 call audio is included or referenced with content
++1 Surveillance footage, dashcam, doorbell cam, or other
+   third-party video is included
+
+CASE INTRINSICS (max 1 point):
++1 Case is unusually high-profile, gruesome, or has a unique hook
+   (serial offender, multiple victims, child victim, public figure,
+   bizarre motive, shocking confession)
+
+Cap the total at 10. Show your math in drama_summary.
+
+═══════════════════════════════════════════════════════════════════════
+OUTPUT — valid JSON only, no prose before or after
+═══════════════════════════════════════════════════════════════════════
+
+If REJECTED:
+{"has_interrogation": false, "rejection_reason": "brief reason"}
+
+If ACCEPTED:
+{
+  "has_interrogation": true,
+  "category": "interrogation_confirmed" | "bodycam_only" | "interrogation_unsure",
+  "drama_rating": <integer 1-10>,
+  "drama_breakdown": {
+    "bodycam_points": <0-3>,
+    "interrogation_points": <0-4>,
+    "additional_footage_points": <0-2>,
+    "case_intrinsics_points": <0-1>
+  },
+  "drama_summary": "Explanation of points awarded, with timestamps where possible",
+  "defendant_name": "...",
+  "victim_name": "...",
+  "charges": "...",
+  "date_of_incident": "...",
+  "location_of_incident": "City, State",
+  "arresting_agency": "...",
+  "verdict": "...",
+  "summary": "200 words",
+  "footage_types": [
+    {"type": "bodycam|interrogation|911_call|surveillance|dashcam|courtroom|news",
+     "description": "...", "approx_timestamp": "..."}
+  ]
+}

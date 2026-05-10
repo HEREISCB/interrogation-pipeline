@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Interrogation Pipeline — Onboarding</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  @media print {
+    .no-print { display: none !important; }
+    a { color: #000 !important; text-decoration: none !important; }
+    h1, h2, h3 { page-break-after: avoid; }
+    p, li, blockquote, pre, table { page-break-inside: avoid; }
+  }
+  :root {
+    --ink: #15171a;
+    --soft: #5b6068;
+    --line: #e5e7eb;
+    --accent: #0b66c3;
+    --bg-soft: #f7f8fa;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: #fff;
+    line-height: 1.55; font-size: 11pt;
+  }
+  body {
+    max-width: 780px; margin: 0 auto;
+    padding: 32px 28px 64px;
+  }
+  .toolbar {
+    position: sticky; top: 0; background: #fff;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 28px 12px;
+    margin: -32px -28px 28px;
+    display: flex; gap: 10px; align-items: center; z-index: 10;
+  }
+  .toolbar button {
+    padding: 7px 14px; border: 1px solid var(--ink); border-radius: 6px;
+    background: var(--ink); color: #fff;
+    font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .toolbar .hint { color: var(--soft); font-size: 12px; }
+  h1 { font-size: 24pt; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .subhead { color: var(--soft); font-size: 11pt; margin-bottom: 24px; }
+  h2 {
+    font-size: 15pt; margin: 28px 0 10px;
+    border-bottom: 1px solid var(--line); padding-bottom: 6px;
+  }
+  h3 { font-size: 12pt; margin: 18px 0 6px; }
+  p { margin: 0 0 12px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  strong { color: var(--ink); }
+  a { color: var(--accent); }
+  code {
+    font-family: "SFMono-Regular", "Consolas", monospace;
+    background: var(--bg-soft);
+    padding: 1px 5px; border-radius: 3px;
+    font-size: 0.92em;
+  }
+  pre {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 9.5pt;
+    line-height: 1.45;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 10pt; margin-bottom: 16px;
+  }
+  th, td {
+    text-align: left; padding: 6px 10px;
+    border-bottom: 1px solid var(--line); vertical-align: top;
+  }
+  th { background: var(--bg-soft); font-size: 9.5pt; text-transform: uppercase; color: var(--soft); }
+  blockquote {
+    margin: 0 0 14px; padding: 10px 14px;
+    background: var(--bg-soft);
+    border-left: 3px solid var(--accent);
+  }
+  .tldr {
+    background: var(--bg-soft); border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px 18px; margin: 0 0 24px;
+  }
+  .signoff { margin-top: 36px; color: var(--soft); font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button onclick="window.print()">Print / Save as PDF</button>
+  <span class="hint">In the print dialog, choose "Save as PDF" as the destination.</span>
+</div>
+
+<h1>Interrogation Pipeline — Onboarding</h1>
+<p class="subhead">For Ayush · By Chaitanya · 2026-05-10</p>
+
+<p>This is the only doc you need to get the pipeline running on your Mac (or any Windows box) and use it day-to-day. Read it once end-to-end — it's short.</p>
+
+<blockquote><strong>Note:</strong> the repo includes a working <code>.env.example</code> with placeholders only. You use your own Anthropic / Tavily / Trello / Webshare accounts — nothing in here is bound to my account. The install script copies <code>.env.example</code> to <code>.env</code> on first run; you fill in your own keys.</blockquote>
+
+<div class="tldr">
+<strong>TL;DR.</strong>
+<pre style="margin-top: 8px; background: white; border: 1px solid var(--line);"><code>1. install everything       → run install.sh / install.ps1
+2. add your API keys         → edit backend/.env
+3. drop your YT cookies      → backend/data/cookies/cookies_p4.txt
+4. start the server          → cd backend && ./.venv/bin/python -m interrogation_pipeline
+5. open browser              → http://localhost:8765
+6. click "Run now"           → watch the dashboard fill with cases
+7. push the good ones        → "Send to Trello" button on each case card</code></pre>
+That's the whole thing. Everything below is what to do when something doesn't behave.
+</div>
+
+<h2>Install (one-time setup)</h2>
+<p>Make sure you have:</p>
+<ul>
+  <li><strong>Python 3.11+</strong> — check with <code>python3 --version</code></li>
+  <li><strong>Node 20+</strong> — check with <code>node --version</code> (needed both for the dashboard build AND for yt-dlp's JS challenge solver at runtime — don't skip)</li>
+  <li><strong>ffmpeg</strong> (optional but useful for future Whisper work)</li>
+</ul>
+
+<p>Then from the project root:</p>
+
+<table>
+  <tr><th>OS</th><th>Command</th></tr>
+  <tr><td>macOS / Linux</td><td><code>bash ./install.sh</code></td></tr>
+  <tr><td>Windows</td><td><code>powershell -ExecutionPolicy Bypass -File .\install.ps1</code></td></tr>
+</table>
+
+<p>The script:</p>
+<ol>
+  <li>Creates <code>backend/.venv</code>, installs Python deps</li>
+  <li>Runs <code>npm install</code> + <code>npm run build</code> in <code>frontend/</code>, drops the static files into the backend's <code>static/</code> folder</li>
+  <li>Copies <code>backend/.env.example</code> to <code>backend/.env</code> (only if missing)</li>
+</ol>
+
+<p>Re-running the script is safe — it skips work that's already done.</p>
+
+<h2>Configuration — backend/.env</h2>
+
+<p>Open <code>backend/.env</code> and fill in the real values:</p>
+
+<pre><code>ANTHROPIC_API_KEY=sk-ant-...
+TAVILY_API_KEY=tvly-...
+TRELLO_API_KEY=...
+TRELLO_TOKEN=...
+TRELLO_OLD_BOARD_ID=...                     # FOIA Trials board ID
+TRELLO_NEW_BOARD_ID=...                     # ULF board ID
+TRELLO_NEW_LIST_ID=...                      # Ayush Snipe List ID
+WEBSHARE_USERNAME=mryzxzjm
+WEBSHARE_PASSWORD=...
+PIPELINE_SCHEDULE_CRON=0 20 * * *           # default: daily at 8 PM local
+PIPELINE_LOOKBACK_HOURS=24</code></pre>
+
+<h3>Getting a Trello token</h3>
+<ol>
+  <li>Open this URL in a browser logged into the Trello account that owns the boards:
+    <pre><code>https://trello.com/1/authorize?expiration=never&amp;scope=read,write&amp;response_type=token&amp;name=interrogation-pipeline&amp;key=&lt;YOUR_KEY&gt;</code></pre>
+  </li>
+  <li>Click <strong>Allow</strong>. The page shows a long token. Paste it as <code>TRELLO_TOKEN</code>.</li>
+</ol>
+<p>The token never expires (we asked for <code>expiration=never</code>). You only need to redo this if you rotate the key.</p>
+
+<h3>Getting your Trello board IDs</h3>
+<p>Leave them empty in <code>.env</code> and the pipeline auto-discovers <strong>ULF</strong> + <strong>Ayush Snipe List</strong> by name on first push. For <strong>FOIA Trials</strong> (the old board, used only for dedup reads), put the ID in explicitly — otherwise the dedup check against your existing 5,650 cards is skipped and you risk re-adding cases.</p>
+<p>To find a board ID: open the board, append <code>.json</code> to the URL. The <code>id</code> field at the top is what you want. List IDs are inside <code>lists[]</code>.</p>
+
+<h3>YouTube cookies</h3>
+<p>Per pipeline you can have a separate cookies file:</p>
+<pre><code>backend/data/cookies/cookies_p4.txt   ← required for v1 (P4 channels)
+backend/data/cookies/cookies_p1.txt   ← when you turn P1 on
+backend/data/cookies/cookies_p3.txt   ← when you turn P3 on
+backend/data/cookies/cookies_p2.txt   ← P2 is dormant by default</code></pre>
+<p>To export: in Chrome, install the "<strong>Get cookies.txt LOCALLY</strong>" extension, log into a throwaway YouTube account, click the extension on <code>youtube.com</code>, save the file. Drop it into <code>backend/data/cookies/</code> with the right filename.</p>
+<p><strong>Cookies expire every 7-14 days.</strong> When they go stale, the dashboard shows a red banner ("Cookies expired"). Re-export, replace the file, and the next run picks it up.</p>
+
+<h2>Running it</h2>
+<pre><code>cd backend
+./.venv/bin/python -m interrogation_pipeline       # macOS/Linux
+.\.venv\Scripts\python.exe -m interrogation_pipeline   # Windows</code></pre>
+
+<p>You'll see something like:</p>
+<pre><code>INFO  Initializing database…
+INFO  Seeded channels: P4=13  P3=4  P1=30  P2=103 (P2 inactive)
+INFO  Database ready.
+INFO  Scheduler started; cron=0 20 * * *
+INFO  Uvicorn running on http://127.0.0.1:8765</code></pre>
+
+<p>Open <code>http://127.0.0.1:8765</code> in your browser.</p>
+
+<p>The scheduler is now armed. By default it fires daily at <strong>8 PM local time</strong>. Change the cron in Settings → Schedule.</p>
+
+<h2>Using the dashboard</h2>
+
+<h3>Today (the page you'll live on)</h3>
+<ul>
+  <li><strong>Top stats bar</strong>: P4 coverage — total YT uploads, what we've ingested, % accepted, what's been pushed to Trello.</li>
+  <li><strong>Pipeline picker + Run now</strong>: kick a manual run for any pipeline (P4 default; P1/P2/P3/ALL). Live phase + counts via Server-Sent Events.</li>
+  <li><strong>Accepted cases</strong>: each card has defendant, victim, charges, drama rating, source articles, and three buttons:
+    <ul>
+      <li><strong>Send to Trello</strong>: pushes to ULF → Ayush Snipe List, with last-mile dedup. Disabled if dedup detects a duplicate.</li>
+      <li><strong>Mark reviewed</strong>: hides it from Today.</li>
+      <li><strong>Skip</strong>: same as reviewed.</li>
+    </ul>
+  </li>
+  <li><strong>Already on triage / main board</strong> sections: cases that fuzz-matched an existing Trello card. Shown for "peace of mind" but not pushable.</li>
+  <li><strong>Rejected by AI</strong> (collapsed at bottom): every video Haiku said wasn't homicide, with its stated reason.</li>
+</ul>
+
+<h3>Banners</h3>
+<ul>
+  <li><strong>Amber: missing API keys</strong> — fill in <code>.env</code> and restart.</li>
+  <li><strong>Red: cookies expired</strong> — re-export <code>cookies_p4.txt</code>.</li>
+</ul>
+
+<h3>Other pages</h3>
+<ul>
+  <li><strong>Calendar</strong>: month grid, color-coded by daily activity. Click a day for the drilldown.</li>
+  <li><strong>Channels</strong>: every channel, all pipelines. Toggle active. Move between pipelines via dropdown. Add new channels by pasting <code>@handle</code> or UC ID.</li>
+  <li><strong>Runs</strong>: every run ever, status + counts + error log.</li>
+  <li><strong>Settings</strong>: schedule cron (live reschedule), lookback hours, concurrency knobs, board IDs, banned-states/agencies list editor.</li>
+  <li><strong>Stats</strong>: Anthropic spend today/week/month/lifetime, per-channel coverage table.</li>
+</ul>
+
+<h2>Troubleshooting</h2>
+
+<table>
+  <tr><th>Symptom</th><th>Probable cause</th><th>Fix</th></tr>
+  <tr><td>Dashboard says all keys missing</td><td><code>.env</code> not loaded</td><td>Check file exists at <code>backend/.env</code> and you started the server from <code>backend/</code></td></tr>
+  <tr><td>Scrape archives lots of "DRM protected"</td><td>YouTube enrolled this account in their DRM experiment</td><td>Switch to a different cookies file / different YT account</td></tr>
+  <tr><td>Scrape archives lots of "no_captions"</td><td>Channel has no English auto-captions</td><td>Whisper fallback is out of v1 scope; accept the gap</td></tr>
+  <tr><td>All scrapes fail with "rate limited"</td><td>Webshare bandwidth exhausted (HTTP 402)</td><td>Top up at <a href="https://dashboard.webshare.io">dashboard.webshare.io</a></td></tr>
+  <tr><td>Scan stops with "Anthropic credits exhausted"</td><td>Self-explanatory</td><td>Top up at <a href="https://console.anthropic.com">console.anthropic.com</a>; re-run, scan_progress is preserved</td></tr>
+  <tr><td>"Cookies expired" red banner</td><td>5+ consecutive auth failures on one cookie file</td><td>Re-export the file from a logged-in Chrome tab</td></tr>
+  <tr><td>Send to Trello button disabled</td><td><code>dedup_status != unique</code></td><td>Click the case to see which board it matches; review there</td></tr>
+  <tr><td>Calendar shows empty cells</td><td>Run hasn't completed yet, or daily_counts phase failed</td><td>Check Runs → events for the latest run</td></tr>
+  <tr><td>n challenge solving failed</td><td>yt-dlp can't see your Node install</td><td>Verify <code>node --version</code> works from the same shell you start the server in</td></tr>
+</table>
+
+<h2>Costs at typical volume</h2>
+<p>For ~100 unique homicide cases per day (means scanning ~400 transcripts):</p>
+<ul>
+  <li>Anthropic Haiku scans: ~$2.80/day</li>
+  <li>Tavily verify + Haiku verify on accepted: ~$1.20/day</li>
+  <li>Webshare bandwidth: ~$0.04/day (covered by $27.50/mo residential plan)</li>
+  <li>Trello: free</li>
+  <li><strong>Total: ~$120/month</strong> at full volume.</li>
+</ul>
+
+<h2>Backups</h2>
+<p><code>backend/data/state.db</code> is the entire system state — channels, runs, scans, cases, Trello cache. Copy that file to back up everything. Re-runs after a crash are free because every state mutation is committed to SQLite.</p>
+
+<p class="signoff">— Chaitanya</p>
+
+</body>
+</html>
