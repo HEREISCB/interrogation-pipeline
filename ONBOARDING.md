@@ -7,7 +7,23 @@ This is the only doc you need to get the pipeline running on your Mac (or any Wi
 
 > **Note:** the repo includes a working `.env.example` with placeholders only. You use your own Anthropic / Tavily / Trello / Webshare accounts — nothing in here is bound to my account. If you cloned the repo on a different machine than where I tested, the `.env` file won't exist yet and the install script creates it from `.env.example`.
 
-## TL;DR
+## TL;DR — easy path (double-click)
+
+| OS | Double-click |
+|---|---|
+| **Windows** | `start.bat` |
+| **macOS** | `start.command` (right-click → Open the first time, macOS asks for confirmation) |
+
+The launcher will:
+1. Check that Python + Node are installed (links you to downloads if not)
+2. Run first-time setup if `.venv` is missing (~2-3 min)
+3. Build the dashboard if missing
+4. Create `backend/.env` from the template and open it for you to paste your API keys
+5. Start the server, open the dashboard in your browser
+
+After that, the same launcher just starts the server + opens the browser. To stop: press `Ctrl+C` in the launcher window.
+
+## TL;DR — terminal path
 
 ```
 1. install everything       → run install.sh / install.ps1

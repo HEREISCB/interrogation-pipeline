@@ -28,6 +28,8 @@ backend/data/*.json
 # ────────────  Built artifacts  ────────────
 backend/interrogation_pipeline/static/
 frontend/dist/
+frontend/*.tsbuildinfo
+*.tsbuildinfo
 *.egg-info/
 build/
 

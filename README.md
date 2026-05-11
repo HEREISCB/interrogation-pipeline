@@ -4,19 +4,28 @@ Daily YouTube case-mining pipeline + local web dashboard for the FOIA / true-cri
 
 Cross-platform Python + React app. Discovers new uploads on a curated channel list via RSS, downloads English captions through Webshare residential proxies + yt-dlp, scans transcripts with Claude Haiku 4.5 to surface homicide cases, fact-checks names via Tavily, dedupes against your Trello board, and gives you a one-click "Send to Trello" workflow.
 
-## Quick start
+## Quick start — one click
 
-| OS | Install command |
+| OS | Double-click |
 |---|---|
-| **macOS / Linux** | `bash ./install.sh` |
-| **Windows** | `powershell -ExecutionPolicy Bypass -File .\install.ps1` |
+| **Windows** | [`start.bat`](start.bat) |
+| **macOS** | [`start.command`](start.command) |
 
-Then:
+First run: installs everything (~2-3 min), opens `backend/.env` for you to add API keys, then exits. Second run: starts the server and opens the dashboard in your browser.
 
-1. Edit `backend/.env` and add your API keys (Anthropic, Tavily, Trello, Webshare).
-2. Drop a YouTube cookies file at `backend/data/cookies/cookies_p4.txt`.
-3. Start: `cd backend && ./.venv/bin/python -m interrogation_pipeline` (Windows: `.\.venv\Scripts\python.exe -m interrogation_pipeline`).
-4. Open <http://localhost:8765>.
+### Quick start — terminal
+
+| OS | Command |
+|---|---|
+| **macOS / Linux** | `bash ./install.sh && cd backend && ./.venv/bin/python -m interrogation_pipeline` |
+| **Windows** | `powershell -ExecutionPolicy Bypass -File .\install.ps1` then `cd backend && .\.venv\Scripts\python.exe -m interrogation_pipeline` |
+
+Either way, you need:
+
+1. **Python 3.11+** and **Node 20+** on PATH
+2. API keys filled into `backend/.env` (Anthropic, Tavily, Trello, Webshare optional)
+3. A YouTube cookies file at `backend/data/cookies/cookies_p4.txt` (or one of the pooled paths)
+4. Browser → <http://localhost:8765>
 
 Full instructions: see [ONBOARDING.md](ONBOARDING.md) (or the printable [ONBOARDING.html](ONBOARDING.html)).
 
