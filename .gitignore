@@ -56,9 +56,11 @@ Thumbs.db
 *.swp
 
 # ────────────  Project-specific local helper files  ────────────
-_*.py
-_*.json
-_*.txt
+# Match single-leading-underscore helper files (_extract.py, _dedup_test.py, etc.)
+# WITHOUT matching dunder files (__init__.py, __main__.py).
+_[!_]*.py
+_[!_]*.json
+_[!_]*.txt
 _handoff.txt
 _extract*.py
 _channels.json
