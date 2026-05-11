@@ -38,7 +38,7 @@ DEFAULTS: dict[str, Any] = {
     # are auto-discovered by name on first push.
     "old_board_name": "FOIA Trials",
     "new_board_name": "ULF",
-    "new_list_name": "Ayush Snipe List",
+    "new_list_name": "Autoload",
     "old_board_id": "",
     "new_board_id": "",
     "new_list_id": "",
@@ -103,6 +103,11 @@ async def seed_defaults() -> None:
         for k, v in DEFAULTS.items():
             if k not in existing:
                 await repo.set(k, v)
+        # One-off migration: the Trello list was originally seeded as
+        # "Ayush Snipe List" but the actual list on Ayush's board is "Autoload".
+        # Promote stored value to the new default unless the user customized it.
+        if existing.get("new_list_name") == "Ayush Snipe List":
+            await repo.set("new_list_name", "Autoload")
 
 
 async def load() -> RuntimeConfig:

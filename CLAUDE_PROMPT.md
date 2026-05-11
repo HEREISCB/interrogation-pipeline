@@ -40,7 +40,7 @@ After reading those, walk me through:
      - The "new" board where pipeline cases will be pushed for me to review
      - The list inside the new board where cards land
      If I leave new_board_id and new_list_id empty, the pipeline auto-discovers
-     them by name on first push (default names: "ULF" and "Ayush Snipe List").
+     them by name on first push (default names: "ULF" and "Autoload").
      Help me decide what to set.
   5. Help me export YouTube cookies:
      - Install "Get cookies.txt LOCALLY" Chrome extension

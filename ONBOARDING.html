@@ -152,7 +152,7 @@ TRELLO_API_KEY=...
 TRELLO_TOKEN=...
 TRELLO_OLD_BOARD_ID=...                     # FOIA Trials board ID
 TRELLO_NEW_BOARD_ID=...                     # ULF board ID
-TRELLO_NEW_LIST_ID=...                      # Ayush Snipe List ID
+TRELLO_NEW_LIST_ID=...                      # Autoload ID
 WEBSHARE_USERNAME=mryzxzjm
 WEBSHARE_PASSWORD=...
 PIPELINE_SCHEDULE_CRON=0 20 * * *           # default: daily at 8 PM local
@@ -168,7 +168,7 @@ PIPELINE_LOOKBACK_HOURS=24</code></pre>
 <p>The token never expires (we asked for <code>expiration=never</code>). You only need to redo this if you rotate the key.</p>
 
 <h3>Getting your Trello board IDs</h3>
-<p>Leave them empty in <code>.env</code> and the pipeline auto-discovers <strong>ULF</strong> + <strong>Ayush Snipe List</strong> by name on first push. For <strong>FOIA Trials</strong> (the old board, used only for dedup reads), put the ID in explicitly — otherwise the dedup check against your existing 5,650 cards is skipped and you risk re-adding cases.</p>
+<p>Leave them empty in <code>.env</code> and the pipeline auto-discovers <strong>ULF</strong> + <strong>Autoload</strong> by name on first push. For <strong>FOIA Trials</strong> (the old board, used only for dedup reads), put the ID in explicitly — otherwise the dedup check against your existing 5,650 cards is skipped and you risk re-adding cases.</p>
 <p>To find a board ID: open the board, append <code>.json</code> to the URL. The <code>id</code> field at the top is what you want. List IDs are inside <code>lists[]</code>.</p>
 
 <h3>YouTube cookies</h3>
@@ -204,7 +204,7 @@ INFO  Uvicorn running on http://127.0.0.1:8765</code></pre>
   <li><strong>Pipeline picker + Run now</strong>: kick a manual run for any pipeline (P4 default; P1/P2/P3/ALL). Live phase + counts via Server-Sent Events.</li>
   <li><strong>Accepted cases</strong>: each card has defendant, victim, charges, drama rating, source articles, and three buttons:
     <ul>
-      <li><strong>Send to Trello</strong>: pushes to ULF → Ayush Snipe List, with last-mile dedup. Disabled if dedup detects a duplicate.</li>
+      <li><strong>Send to Trello</strong>: pushes to ULF → Autoload, with last-mile dedup. Disabled if dedup detects a duplicate.</li>
       <li><strong>Mark reviewed</strong>: hides it from Today.</li>
       <li><strong>Skip</strong>: same as reviewed.</li>
     </ul>

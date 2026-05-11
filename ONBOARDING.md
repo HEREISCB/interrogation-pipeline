@@ -72,7 +72,7 @@ TRELLO_API_KEY=...                          # from https://trello.com/power-ups/
 TRELLO_TOKEN=...                            # see "Getting a Trello token" below
 TRELLO_OLD_BOARD_ID=...                     # FOIA Trials board ID (for dedup)
 TRELLO_NEW_BOARD_ID=...                     # ULF board ID (where cases get pushed)
-TRELLO_NEW_LIST_ID=...                      # Ayush Snipe List ID (or auto-discovered)
+TRELLO_NEW_LIST_ID=...                      # Autoload ID (or auto-discovered)
 WEBSHARE_USERNAME=mryzxzjm                  # your Webshare username prefix
 WEBSHARE_PASSWORD=...                       # your Webshare password
 WEBSHARE_HOST=p.webshare.io
@@ -101,7 +101,7 @@ The token never expires (we asked for `expiration=never`). You only need to redo
 
 ### Getting your Trello board IDs
 
-If you leave `TRELLO_NEW_BOARD_ID` empty, the pipeline will auto-discover it on first push by name (`ULF`). Same for `TRELLO_NEW_LIST_ID` (`Ayush Snipe List`). For `TRELLO_OLD_BOARD_ID` (`FOIA Trials`), you can leave it empty too — but then the dedup check against your existing 5,650 cards is skipped, and you risk re-adding cases. **Recommended:** look up the IDs once and put them in `.env`.
+If you leave `TRELLO_NEW_BOARD_ID` empty, the pipeline will auto-discover it on first push by name (`ULF`). Same for `TRELLO_NEW_LIST_ID` (`Autoload`). For `TRELLO_OLD_BOARD_ID` (`FOIA Trials`), you can leave it empty too — but then the dedup check against your existing 5,650 cards is skipped, and you risk re-adding cases. **Recommended:** look up the IDs once and put them in `.env`.
 
 To find a board ID: open the board in Trello, append `.json` to the URL. The `id` field at the top is what you want. List IDs are inside `lists[]`.
 
@@ -149,7 +149,7 @@ The scheduler is now armed. By default it fires daily at **8 PM local time** (so
 - **Top stats bar**: P4 coverage — total YT uploads, what we've ingested, % accepted, what's been pushed to Trello.
 - **Pipeline picker + Run now**: kick a manual run for any pipeline (P4 default; P1/P2/P3/ALL as choices). Watch the live phase + counts update in real time via Server-Sent Events.
 - **Accepted cases**: each is a card with defendant, victim, charges, drama rating, source articles, and three buttons:
-  - **Send to Trello**: pushes to ULF → Ayush Snipe List, with last-mile dedup against the cached cards. Disabled if dedup detects this case already exists somewhere.
+  - **Send to Trello**: pushes to ULF → Autoload, with last-mile dedup against the cached cards. Disabled if dedup detects this case already exists somewhere.
   - **Mark reviewed**: hides it from Today.
   - **Skip**: same as reviewed.
 - **Already on triage / main board** sections: cases that fuzz-matched an existing Trello card. Shown for "peace of mind" but not pushable.

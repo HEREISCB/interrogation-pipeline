@@ -1,10 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { formatRelative } from "@/lib/format";
 
-const PIPELINES = ["P1", "P2", "P3", "P4"];
+const PIPELINES = ["P1", "P2", "P3", "P4"] as const;
+
+// User-facing labels per pipeline. P1 = "Discovery Channels" per Ayush's request.
+const PIPELINE_LABELS: Record<string, string> = {
+  P4: "Snipe (priority)",
+  P1: "Discovery Channels",
+  P3: "Law & Crime",
+  P2: "Refresh (dormant)",
+};
+
+type TabKey = (typeof PIPELINES)[number] | "ALL";
 
 export default function Channels() {
   const qc = useQueryClient();
@@ -12,6 +22,7 @@ export default function Channels() {
   const [adding, setAdding] = useState(false);
   const [newId, setNewId] = useState("");
   const [newPipeline, setNewPipeline] = useState("P4");
+  const [tab, setTab] = useState<TabKey>("P4");
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["channels"] });
 
@@ -40,7 +51,22 @@ export default function Channels() {
     },
   });
 
-  const rows = channels.data ?? [];
+  const all = channels.data ?? [];
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { ALL: all.length };
+    for (const p of PIPELINES) c[p] = 0;
+    for (const row of all) c[row.pipeline] = (c[row.pipeline] ?? 0) + 1;
+    return c;
+  }, [all]);
+
+  const rows = tab === "ALL" ? all : all.filter((c) => c.pipeline === tab);
+
+  const tabClass = (active: boolean) =>
+    `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+      active
+        ? "bg-ink text-white"
+        : "bg-bg-soft text-soft hover:bg-line"
+    }`;
 
   return (
     <div>
@@ -52,6 +78,22 @@ export default function Channels() {
         >
           + Add channel
         </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={() => setTab("ALL")} className={tabClass(tab === "ALL")}>
+          All ({counts.ALL ?? 0})
+        </button>
+        {PIPELINES.map((p) => (
+          <button
+            key={p}
+            onClick={() => setTab(p)}
+            className={tabClass(tab === p)}
+            title={p}
+          >
+            {p} · {PIPELINE_LABELS[p]} ({counts[p] ?? 0})
+          </button>
+        ))}
       </div>
 
       {adding && (
@@ -76,7 +118,9 @@ export default function Channels() {
                 className="border border-line rounded-md px-3 py-1.5 text-sm bg-white"
               >
                 {PIPELINES.map((p) => (
-                  <option key={p}>{p}</option>
+                  <option key={p} value={p}>
+                    {p} · {PIPELINE_LABELS[p]}
+                  </option>
                 ))}
               </select>
             </div>
@@ -110,10 +154,17 @@ export default function Channels() {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && (
+            {channels.isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-soft py-6">
                   Loading…
+                </td>
+              </tr>
+            )}
+            {!channels.isLoading && rows.length === 0 && (
+              <tr>
+                <td colSpan={6} className="text-center text-soft py-6">
+                  No channels in this tab yet.
                 </td>
               </tr>
             )}
@@ -128,7 +179,9 @@ export default function Channels() {
                     className="border border-line rounded px-2 py-1 text-xs bg-white"
                   >
                     {PIPELINES.map((p) => (
-                      <option key={p}>{p}</option>
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
                     ))}
                   </select>
                 </td>
