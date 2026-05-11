@@ -123,6 +123,14 @@ EOF
     exit 0
 fi
 
+# ── Kill any stale server on the port ────────────────────────
+STALE_PIDS=$(lsof -ti :8765 2>/dev/null || true)
+if [ -n "$STALE_PIDS" ]; then
+    echo "Found existing process(es) on port 8765: $STALE_PIDS — stopping them..."
+    kill -9 $STALE_PIDS 2>/dev/null || true
+    sleep 1
+fi
+
 # ── Open browser after the server is ready ────────────────────
 (sleep 6 && open "http://127.0.0.1:8765") &
 

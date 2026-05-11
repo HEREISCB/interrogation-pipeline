@@ -125,6 +125,12 @@ if not exist "backend\.env" (
     exit /b 0
 )
 
+REM ── Kill any stale server on the port ─────────────────────────
+for /f "tokens=5" %%P in ('netstat -aon ^| findstr ":8765 " ^| findstr "LISTENING"') do (
+    echo Found existing process on port 8765 ^(PID %%P^). Stopping it...
+    taskkill /F /PID %%P >nul 2>&1
+)
+
 REM ── Open the browser after the server is up ───────────────────
 start /min cmd /c "timeout /t 7 /nobreak >nul && start http://127.0.0.1:8765"
 
