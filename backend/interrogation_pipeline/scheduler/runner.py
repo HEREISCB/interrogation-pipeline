@@ -32,7 +32,8 @@ from interrogation_pipeline.scan.scanner import (
 )
 from interrogation_pipeline.scan.vtt import clean_vtt_file
 from interrogation_pipeline.scrape import errors as scrape_errors
-from interrogation_pipeline.scrape.proxies import WebshareSessionPool
+from interrogation_pipeline.scrape.cookies import pick_cookies
+from interrogation_pipeline.scrape.proxies import ProxyPool, WebshareSessionPool
 from interrogation_pipeline.scrape.ytdlp import (
     count_uploads,
     fetch_one,
@@ -249,8 +250,13 @@ async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None
 
 
 async def _phase_scrape(run_id: int, concurrency: int, max_attempts: int) -> dict[str, int]:
-    """Download captions for every pending video."""
-    pool = WebshareSessionPool()
+    """Download captions for every pending video.
+
+    Each video gets a freshly-picked cookies file (per-pipeline pool) and a
+    freshly-acquired proxy session (or direct, in auto mode). Health stats
+    flow back to cookie_health + proxy_pool so the UI surfaces problems.
+    """
+    pool = ProxyPool()
     counts = defaultdict(int)
     sem = asyncio.Semaphore(concurrency)
     cookie_threshold = (await runtime_cfg.load()).cookie_stale_threshold
@@ -260,17 +266,21 @@ async def _phase_scrape(run_id: int, concurrency: int, max_attempts: int) -> dic
 
     async def one(video):
         async with sem:
-            cookies_path = await _resolve_cookies(video.channel_id)
-            if cookies_path is None or not Path(cookies_path).exists():
+            async with session_scope() as session:
+                ch = await ChannelRepo(session).get(video.channel_id)
+            pipeline = ch.pipeline if ch else "P4"
+            cookies_path = await pick_cookies(pipeline)
+            if cookies_path is None or not cookies_path.exists():
                 async with session_scope() as session:
                     await VideoRepo(session).mark_failed(
-                        video.id, f"cookies file missing: {cookies_path}"
+                        video.id, f"no cookies file for pipeline {pipeline}"
                     )
                 counts["failed"] += 1
                 await _log(
                     run_id,
                     "scrape",
-                    f"Cookies missing for {video.channel_id} — drop {cookies_path} into data/cookies/",
+                    f"No cookies for pipeline {pipeline} — drop a .txt into "
+                    f"data/cookies/{pipeline.lower()}/ or data/cookies/cookies_{pipeline.lower()}.txt",
                     level="error",
                     video_id=video.id,
                 )
@@ -279,29 +289,23 @@ async def _phase_scrape(run_id: int, concurrency: int, max_attempts: int) -> dic
             try:
                 result = await fetch_one(
                     video.id,
-                    cookies_path=Path(cookies_path),
+                    cookies_path=cookies_path,
                     out_dir=env_settings.transcripts_dir / video.channel_id,
                     pool=pool,
                 )
             except scrape_errors.ScrapeError as e:
-                await _handle_scrape_error(run_id, video, e, cookies_path, cookie_threshold)
+                await _handle_scrape_error(run_id, video, e, str(cookies_path), cookie_threshold)
                 counts["failed" if e.retryable else "archived"] += 1
                 return
 
             async with session_scope() as session:
                 rel = str(result.vtt_path.relative_to(env_settings.data_dir).as_posix())
                 await VideoRepo(session).mark_captioned(video.id, rel)
-                await CookieHealthRepo(session).record_ok(cookies_path)
+                await CookieHealthRepo(session).record_ok(str(cookies_path))
             counts["captioned"] += 1
 
     await asyncio.gather(*(one(v) for v in pending))
     return dict(counts)
-
-
-async def _resolve_cookies(channel_id: str) -> str | None:
-    async with session_scope() as session:
-        ch = await ChannelRepo(session).get(channel_id)
-    return ch.cookies_path if ch else None
 
 
 async def _handle_scrape_error(

@@ -22,6 +22,16 @@ DEFAULTS: dict[str, Any] = {
     "verify_concurrency": 3,
     "video_max_attempts": 5,
     "proxy_blacklist_minutes": 30,
+    # Adaptive proxy mode:
+    #   "auto"    — try direct (no proxy) first; fall back to proxy if YouTube
+    #               rate-limits or detects us. Periodically retry direct.
+    #   "always"  — every yt-dlp call goes through a proxy from the pool.
+    #   "never"   — direct connection only (no proxy ever).
+    "proxy_mode": "auto",
+    # In auto mode, how often we retry going direct after a failure.
+    "proxy_retry_direct_minutes": 60,
+    # Disable a proxy after this many consecutive failures.
+    "proxy_max_failures": 5,
     "cookie_stale_threshold": 5,      # consecutive auth_failed before banner
     # Trello — display labels are stored in config so they can be edited from
     # Settings without touching code. Actual board/list IDs come from .env or
@@ -52,6 +62,9 @@ class RuntimeConfig:
     verify_concurrency: int
     video_max_attempts: int
     proxy_blacklist_minutes: int
+    proxy_mode: str
+    proxy_retry_direct_minutes: int
+    proxy_max_failures: int
     cookie_stale_threshold: int
     old_board_name: str
     new_board_name: str

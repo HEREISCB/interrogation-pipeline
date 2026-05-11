@@ -244,7 +244,7 @@ def _outcome_error_class(cls: Classification) -> type[ScrapeError]:
     }.get(cls, ScrapeError)
 
 
-# Convenience: a single high-level call that uses the WebshareSessionPool +
+# Convenience: a single high-level call that uses the ProxyPool +
 # blacklists on rate-limit. Not auto-retrying — that's the runner's job so we
 # can update DB state per attempt.
 async def fetch_one(
@@ -257,17 +257,20 @@ async def fetch_one(
 ) -> CaptionDownload:
     proxy = await pool.acquire()
     try:
-        return await download_captions(
+        result = await download_captions(
             video_id,
             cookies_path=cookies_path,
             proxy=proxy,
             out_dir=out_dir,
             timeout=timeout,
         )
-    except (ScrapeError,) as e:
-        # Auto-blacklist on rate-limit / bot-detection so the runner doesn't
-        # need to know proxy mechanics.
+        # success → tell the pool so adaptive mode + per-proxy stats update
+        await pool.report_success(proxy)
+        return result
+    except ScrapeError as e:
         from interrogation_pipeline.scrape.errors import BotDetection, RateLimited
+        await pool.report_failure(proxy, reason=str(e)[:200])
+        # Short-term blacklist on rate-limit / bot-detection.
         if isinstance(e, (RateLimited, BotDetection)):
-            await pool.blacklist(proxy.session_id, str(e)[:200])
+            await pool.blacklist(proxy, str(e)[:200])
         raise

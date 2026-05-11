@@ -75,6 +75,29 @@ export default function Settings() {
 
       <section className="mb-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-soft mb-3">
+          Proxy mode
+        </h2>
+        <div className="grid grid-cols-3 gap-3 items-center mb-3">
+          <label className="text-sm text-soft text-right">Mode</label>
+          <select
+            value={String(draft.proxy_mode ?? "auto")}
+            onChange={(e) => setDraft((d) => ({ ...d, proxy_mode: e.target.value as "auto" | "always" | "never" }))}
+            className="col-span-2 border border-line rounded-md px-3 py-1.5 text-sm bg-white"
+          >
+            <option value="auto">Auto — try direct first, fall back to proxy on YT errors</option>
+            <option value="always">Always — every yt-dlp call uses a proxy</option>
+            <option value="never">Never — direct only, no proxy</option>
+          </select>
+        </div>
+        <Field name="proxy_retry_direct_minutes" label="Retry direct after (min)" type="number" />
+        <Field name="proxy_max_failures" label="Disable proxy after N fails" type="number" />
+        <div className="text-xs text-soft mt-2 mb-2">
+          Edit the proxy pool itself on the <a href="/settings#proxies" className="text-accent hover:underline">Proxy pool</a> section below.
+        </div>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-soft mb-3">
           Trello
         </h2>
         <Field name="old_board_id" label="Old (main) board ID" />

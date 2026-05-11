@@ -21,6 +21,7 @@ from interrogation_pipeline.store.repos import (
     CaseRepo,
     ChannelRepo,
     CookieHealthRepo,
+    ProxyPoolRepo,
     RunRepo,
     StatsRepo,
 )
@@ -548,6 +549,138 @@ async def stats_channels() -> list[dict[str, Any]]:
         ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Proxies
+# ──────────────────────────────────────────────────────────────────────
+proxies_router = APIRouter(tags=["proxies"], prefix="/proxies")
+
+
+@proxies_router.get("")
+async def list_proxies(
+    enabled_only: bool = False, limit: int = 200, offset: int = 0
+) -> dict[str, Any]:
+    async with session_scope() as session:
+        repo = ProxyPoolRepo(session)
+        total = await repo.count()
+        enabled = await repo.count(enabled_only=True)
+        rows = await repo.list(enabled_only=enabled_only, limit=limit, offset=offset)
+        items = [
+            {
+                "id": p.id,
+                "host": p.host,
+                "port": p.port,
+                "username": p.username,
+                # Never return password
+                "label": p.label,
+                "enabled": p.enabled,
+                "consecutive_failures": p.consecutive_failures,
+                "success_count": p.success_count,
+                "failure_count": p.failure_count,
+                "last_ok_iso": p.last_ok_iso,
+                "last_failed_iso": p.last_failed_iso,
+            }
+            for p in rows
+        ]
+    return {"total": total, "enabled": enabled, "items": items}
+
+
+class ProxyImportBody(BaseModel):
+    text: str
+    replace: bool = False  # if true, clear pool before importing
+
+
+@proxies_router.post("/import")
+async def import_proxies(body: ProxyImportBody) -> dict[str, Any]:
+    from interrogation_pipeline.scrape.proxy_parser import parse_bulk, to_rows
+
+    proxies, rejected = parse_bulk(body.text)
+    if not proxies and not body.replace:
+        return {"inserted": 0, "duplicates": 0, "rejected": rejected[:20]}
+
+    async with session_scope() as session:
+        repo = ProxyPoolRepo(session)
+        if body.replace:
+            cleared = await repo.clear_all()
+        else:
+            cleared = 0
+        inserted, duplicates = await repo.bulk_upsert(to_rows(proxies))
+    return {
+        "inserted": inserted,
+        "duplicates": duplicates,
+        "rejected": rejected[:20],  # cap so the response stays small
+        "rejected_total": len(rejected),
+        "cleared": cleared,
+    }
+
+
+class ProxyPatch(BaseModel):
+    enabled: Optional[bool] = None
+
+
+@proxies_router.patch("/{proxy_id}")
+async def patch_proxy(proxy_id: int, body: ProxyPatch) -> dict[str, str]:
+    async with session_scope() as session:
+        repo = ProxyPoolRepo(session)
+        if body.enabled is not None:
+            await repo.set_enabled(proxy_id, body.enabled)
+    return {"ok": "true"}
+
+
+@proxies_router.delete("/{proxy_id}")
+async def delete_proxy(proxy_id: int) -> dict[str, str]:
+    async with session_scope() as session:
+        await ProxyPoolRepo(session).delete(proxy_id)
+    return {"ok": "true"}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Cookies (per-pipeline file pool)
+# ──────────────────────────────────────────────────────────────────────
+cookies_router = APIRouter(tags=["cookies"], prefix="/cookies")
+
+
+@cookies_router.get("")
+async def list_cookies() -> list[dict[str, Any]]:
+    """List all cookie files across all pipelines, with health."""
+    from sqlalchemy import select
+
+    from interrogation_pipeline.scrape.cookies import list_files
+    from interrogation_pipeline.store.models import CookieHealth
+
+    paths = list_files()
+    if not paths:
+        return []
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(CookieHealth).where(CookieHealth.cookies_path.in_(str(p) for p in paths))
+        )).scalars().all()
+    health = {r.cookies_path: r for r in rows}
+
+    out = []
+    for p in paths:
+        h = health.get(str(p))
+        # Pipeline label inferred from path: data/cookies/<pipeline>/X.txt or
+        # data/cookies/cookies_<pipeline>.txt
+        parent_name = p.parent.name.upper()
+        if parent_name == "COOKIES":
+            stem = p.stem.replace("cookies_", "")
+            pipeline = stem.upper()
+        else:
+            pipeline = parent_name
+        out.append({
+            "path": str(p),
+            "name": p.name,
+            "pipeline": pipeline,
+            "size_bytes": p.stat().st_size if p.exists() else 0,
+            "stale": bool(h and h.stale),
+            "consecutive_auth_failures": (h.consecutive_auth_failures if h else 0),
+            "last_ok_at": h.last_ok_at if h else None,
+            "last_failure_at": h.last_failure_at if h else None,
+        })
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────
 @stats_router.get("/cost")
 async def stats_cost() -> dict[str, Any]:
     """Anthropic spend rolled up over today/week/month. Cheap aggregation

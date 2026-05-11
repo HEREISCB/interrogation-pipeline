@@ -275,11 +275,63 @@ class TrelloCardCache(Base):
 # infrastructure tables
 # ──────────────────────────────────────────────────────────────────────
 class ProxyBlacklist(Base):
+    """Short-term timed blacklist for proxies that just got rate-limited.
+
+    Separate from ProxyPool.enabled (long-term disable). A proxy can be
+    temporarily blacklisted (e.g. 30 minutes after a 429) but still enabled.
+    """
+
     __tablename__ = "proxy_blacklist"
 
     session_id: Mapped[str] = mapped_column(String, primary_key=True)
     blacklisted_until: Mapped[str] = mapped_column(String, nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(String)
+
+
+class ProxyPool(Base):
+    """User-managed pool of HTTP proxies. Populated via bulk paste in Settings UI.
+
+    On first boot, auto-seeded from WEBSHARE_USERNAME/PASSWORD + session range
+    if the table is empty (backward compat with the env-based default).
+    """
+
+    __tablename__ = "proxy_pool"
+    __table_args__ = (
+        UniqueConstraint("host", "port", "username", name="uq_proxy_host_port_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    host: Mapped[str] = mapped_column(String, nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False)
+    username: Mapped[str] = mapped_column(String, nullable=False)
+    password: Mapped[str] = mapped_column(String, nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    times_blacklisted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_used_iso: Mapped[Optional[str]] = mapped_column(String)
+    last_ok_iso: Mapped[Optional[str]] = mapped_column(String)
+    last_failed_iso: Mapped[Optional[str]] = mapped_column(String)
+    added_at: Mapped[str] = mapped_column(String, nullable=False, default=utc_now_iso)
+
+
+class DirectMode(Base):
+    """Tracks the last time a direct (no-proxy) call succeeded against YouTube.
+
+    Powers the "auto" proxy mode: if last_direct_ok was recent, prefer direct.
+    Single-row table keyed by a fixed sentinel.
+    """
+
+    __tablename__ = "direct_mode"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True, default="default")
+    last_direct_ok_iso: Mapped[Optional[str]] = mapped_column(String)
+    last_direct_failed_iso: Mapped[Optional[str]] = mapped_column(String)
+    consecutive_direct_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
 
 
 class TavilyCache(Base):

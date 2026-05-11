@@ -91,4 +91,62 @@ export const api = {
 
   statsP4: () => jsonFetch<P4Stats>("/stats/p4"),
   statsCost: () => jsonFetch<CostStats>("/stats/cost"),
+
+  // Proxies
+  listProxies: (params?: { enabled_only?: boolean; limit?: number }) =>
+    jsonFetch<{
+      total: number;
+      enabled: number;
+      items: {
+        id: number;
+        host: string;
+        port: number;
+        username: string;
+        label: string | null;
+        enabled: boolean;
+        consecutive_failures: number;
+        success_count: number;
+        failure_count: number;
+        last_ok_iso: string | null;
+        last_failed_iso: string | null;
+      }[];
+    }>(
+      `/proxies?${new URLSearchParams({
+        enabled_only: String(params?.enabled_only ?? false),
+        limit: String(params?.limit ?? 200),
+      }).toString()}`
+    ),
+  importProxies: (text: string, replace: boolean) =>
+    jsonFetch<{
+      inserted: number;
+      duplicates: number;
+      rejected: string[];
+      rejected_total: number;
+      cleared: number;
+    }>("/proxies/import", {
+      method: "POST",
+      body: JSON.stringify({ text, replace }),
+    }),
+  toggleProxy: (id: number, enabled: boolean) =>
+    jsonFetch<unknown>(`/proxies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
+  deleteProxy: (id: number) =>
+    jsonFetch<unknown>(`/proxies/${id}`, { method: "DELETE" }),
+
+  // Cookies
+  listCookies: () =>
+    jsonFetch<
+      {
+        path: string;
+        name: string;
+        pipeline: string;
+        size_bytes: number;
+        stale: boolean;
+        consecutive_auth_failures: number;
+        last_ok_at: string | null;
+        last_failure_at: string | null;
+      }[]
+    >("/cookies"),
 };

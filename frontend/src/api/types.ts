@@ -82,12 +82,21 @@ export interface SettingsResponse {
   verify_concurrency: number;
   video_max_attempts: number;
   proxy_blacklist_minutes: number;
+  proxy_mode: "auto" | "always" | "never";
+  proxy_retry_direct_minutes: number;
+  proxy_max_failures: number;
+  cookie_stale_threshold: number;
   old_board_id: string;
+  old_board_name: string;
   new_board_id: string;
+  new_board_name: string;
   new_list_id: string;
+  new_list_name: string;
   prompt_version: string;
   weekly_reconcile_dow: number;
   display_timezone: string;
+  banned_states: string[];
+  banned_agencies: string[];
 }
 
 export interface ApiKeyStatus {

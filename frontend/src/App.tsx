@@ -3,6 +3,8 @@ import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 import Today from "@/pages/Today";
 import Calendar from "@/pages/Calendar";
 import Channels from "@/pages/Channels";
+import Cookies from "@/pages/Cookies";
+import Proxies from "@/pages/Proxies";
 import Runs from "@/pages/Runs";
 import Settings from "@/pages/Settings";
 import Stats from "@/pages/Stats";
@@ -12,6 +14,8 @@ const tabs = [
   { to: "/today", label: "Today" },
   { to: "/calendar", label: "Calendar" },
   { to: "/channels", label: "Channels" },
+  { to: "/cookies", label: "Cookies" },
+  { to: "/proxies", label: "Proxies" },
   { to: "/runs", label: "Runs" },
   { to: "/stats", label: "Stats" },
   { to: "/settings", label: "Settings" },
@@ -52,6 +56,8 @@ export default function App() {
           <Route path="/today" element={<Today />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/channels" element={<Channels />} />
+          <Route path="/cookies" element={<Cookies />} />
+          <Route path="/proxies" element={<Proxies />} />
           <Route path="/runs" element={<Runs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/stats" element={<Stats />} />

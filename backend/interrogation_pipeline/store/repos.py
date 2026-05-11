@@ -21,7 +21,9 @@ from interrogation_pipeline.store.models import (
     ChannelDailyCount,
     ConfigEntry,
     CookieHealth,
+    DirectMode,
     ProxyBlacklist,
+    ProxyPool,
     Run,
     RunEvent,
     ScanResult,
@@ -425,6 +427,126 @@ class CookieHealthRepo:
     async def stale_files(self) -> list[CookieHealth]:
         q = select(CookieHealth).where(CookieHealth.stale.is_(True))
         return list((await self.s.execute(q)).scalars())
+
+
+class ProxyPoolRepo:
+    """CRUD + accounting for the user-managed proxy pool."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.s = session
+
+    async def count(self, enabled_only: bool = False) -> int:
+        from sqlalchemy import func
+        q = select(func.count(ProxyPool.id))
+        if enabled_only:
+            q = q.where(ProxyPool.enabled.is_(True))
+        return int((await self.s.execute(q)).scalar_one())
+
+    async def list(self, *, enabled_only: bool = False, limit: int = 200, offset: int = 0) -> list[ProxyPool]:
+        q = select(ProxyPool).order_by(ProxyPool.id).limit(limit).offset(offset)
+        if enabled_only:
+            q = q.where(ProxyPool.enabled.is_(True))
+        return list((await self.s.execute(q)).scalars())
+
+    async def list_healthy(self, max_consecutive_failures: int) -> list[ProxyPool]:
+        q = select(ProxyPool).where(
+            and_(
+                ProxyPool.enabled.is_(True),
+                ProxyPool.consecutive_failures < max_consecutive_failures,
+            )
+        )
+        return list((await self.s.execute(q)).scalars())
+
+    async def get(self, proxy_id: int) -> Optional[ProxyPool]:
+        return await self.s.get(ProxyPool, proxy_id)
+
+    async def bulk_upsert(self, rows: list[dict[str, Any]]) -> tuple[int, int]:
+        """Insert proxies; returns (inserted, duplicates)."""
+        if not rows:
+            return 0, 0
+        inserted = 0
+        dup = 0
+        for r in rows:
+            existing = await self.s.execute(
+                select(ProxyPool).where(
+                    and_(
+                        ProxyPool.host == r["host"],
+                        ProxyPool.port == r["port"],
+                        ProxyPool.username == r["username"],
+                    )
+                )
+            )
+            if existing.scalar_one_or_none():
+                dup += 1
+                continue
+            self.s.add(ProxyPool(**r))
+            inserted += 1
+        return inserted, dup
+
+    async def report_success(self, proxy_id: int) -> None:
+        p = await self.s.get(ProxyPool, proxy_id)
+        if p is None:
+            return
+        p.consecutive_failures = 0
+        p.success_count = (p.success_count or 0) + 1
+        p.last_used_iso = utc_now_iso()
+        p.last_ok_iso = p.last_used_iso
+
+    async def report_failure(self, proxy_id: int, *, threshold: int) -> bool:
+        """Returns True if this failure pushed the proxy past the disable threshold."""
+        p = await self.s.get(ProxyPool, proxy_id)
+        if p is None:
+            return False
+        p.consecutive_failures = (p.consecutive_failures or 0) + 1
+        p.failure_count = (p.failure_count or 0) + 1
+        p.last_failed_iso = utc_now_iso()
+        p.last_used_iso = p.last_failed_iso
+        if p.consecutive_failures >= threshold and p.enabled:
+            p.enabled = False
+            return True
+        return False
+
+    async def set_enabled(self, proxy_id: int, enabled: bool) -> None:
+        p = await self.s.get(ProxyPool, proxy_id)
+        if p:
+            p.enabled = enabled
+            if enabled:
+                p.consecutive_failures = 0
+
+    async def delete(self, proxy_id: int) -> None:
+        await self.s.execute(delete(ProxyPool).where(ProxyPool.id == proxy_id))
+
+    async def clear_all(self) -> int:
+        result = await self.s.execute(delete(ProxyPool))
+        return result.rowcount or 0
+
+
+class DirectModeRepo:
+    """Tracks no-proxy YouTube health for adaptive 'auto' proxy mode."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.s = session
+
+    async def _get_or_create(self) -> DirectMode:
+        row = await self.s.get(DirectMode, "default")
+        if row is None:
+            row = DirectMode(key="default")
+            self.s.add(row)
+            await self.s.flush()
+        return row
+
+    async def report_success(self) -> None:
+        row = await self._get_or_create()
+        row.last_direct_ok_iso = utc_now_iso()
+        row.consecutive_direct_failures = 0
+
+    async def report_failure(self) -> None:
+        row = await self._get_or_create()
+        row.last_direct_failed_iso = utc_now_iso()
+        row.consecutive_direct_failures = (row.consecutive_direct_failures or 0) + 1
+
+    async def get_state(self) -> DirectMode:
+        return await self._get_or_create()
 
 
 class TavilyRepo:

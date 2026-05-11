@@ -13,6 +13,12 @@ cookies_*.txt
 backend/data/cookies/*
 !backend/data/cookies/.gitkeep
 
+# ────────────  Proxy lists (credentials!) ────────────
+*proxies*.txt
+*proxy*.txt
+Webshare*.txt
+proxies.txt
+
 # ────────────  Runtime data  ────────────
 backend/data/state.db
 backend/data/state.db-*

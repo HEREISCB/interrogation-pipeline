@@ -15,6 +15,8 @@ from interrogation_pipeline import __version__
 from interrogation_pipeline.api.routers import (
     cases_router,
     channels_router,
+    cookies_router,
+    proxies_router,
     runs_router,
     settings_router,
     stats_router,
@@ -23,6 +25,7 @@ from interrogation_pipeline.api.routers import (
 from interrogation_pipeline.bootstrap import seed_all_channels
 from interrogation_pipeline.config.runtime import seed_defaults
 from interrogation_pipeline.scheduler.scheduler import start_scheduler, stop_scheduler
+from interrogation_pipeline.scrape.proxies import maybe_seed_from_env
 from interrogation_pipeline.store.db import init_db
 
 log = logging.getLogger(__name__)
@@ -41,6 +44,9 @@ async def lifespan(app: FastAPI):
             "Seeded channels: P4=%d  P3=%d  P1=%d  P2=%d (P2 inactive)",
             inserted["P4"], inserted["P3"], inserted["P1"], inserted["P2"],
         )
+    seeded_proxies = await maybe_seed_from_env()
+    if seeded_proxies:
+        log.info("Seeded %d proxies from WEBSHARE_* env vars.", seeded_proxies)
     log.info("Database ready.")
     try:
         await start_scheduler()
@@ -79,6 +85,8 @@ app.include_router(channels_router, prefix="/api")
 app.include_router(runs_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
+app.include_router(proxies_router, prefix="/api")
+app.include_router(cookies_router, prefix="/api")
 
 
 # ──── Static frontend (built React app) + SPA fallback ────
