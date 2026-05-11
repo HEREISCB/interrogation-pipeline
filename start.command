@@ -75,9 +75,29 @@ echo "Syncing Python dependencies..."
 
 # ── Build frontend if missing ─────────────────────────────────
 if [ ! -f "backend/interrogation_pipeline/static/index.html" ]; then
-    echo "Building dashboard..."
-    (cd frontend && [ -d node_modules ] || npm install --silent --no-audit --no-fund) \
-        && (cd frontend && npm run build)
+    echo "Building dashboard (2-5 min on first build)..."
+    pushd frontend >/dev/null
+    if [ ! -d "node_modules/@types/node" ]; then
+        echo "Installing npm packages..."
+        npm install --no-audit --no-fund
+    fi
+    npm run build || {
+        popd >/dev/null
+        echo ""
+        echo "Dashboard build failed. See messages above."
+        read -r -p "Press enter to close..."
+        exit 1
+    }
+    popd >/dev/null
+fi
+
+# Verify the build actually landed
+if [ ! -f "backend/interrogation_pipeline/static/index.html" ]; then
+    echo ""
+    echo "ERROR: build finished but backend/interrogation_pipeline/static/index.html"
+    echo "is missing. Try: cd frontend && npm run build"
+    read -r -p "Press enter to close..."
+    exit 1
 fi
 
 # ── Verify .env exists ────────────────────────────────────────

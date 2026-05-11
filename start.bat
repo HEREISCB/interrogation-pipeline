@@ -70,11 +70,37 @@ popd
 
 REM ── Build frontend if missing ─────────────────────────────────
 if not exist "backend\interrogation_pipeline\static\index.html" (
-    echo Building dashboard...
+    echo Building dashboard ^(2-5 min on first build^)...
     pushd frontend
-    if not exist "node_modules" call npm install --silent --no-audit --no-fund
+    if not exist "node_modules\@types\node" (
+        echo Installing npm packages...
+        call npm install --no-audit --no-fund
+    )
     call npm run build
+    if errorlevel 1 (
+        popd
+        echo.
+        echo ============================================
+        echo  Dashboard build FAILED. See messages above.
+        echo  Common fix: run 'npm install' in frontend^\
+        echo ============================================
+        pause
+        exit /b 1
+    )
     popd
+)
+
+REM Verify the build actually landed where the server expects it
+if not exist "backend\interrogation_pipeline\static\index.html" (
+    echo.
+    echo ============================================
+    echo  ERROR: build finished but
+    echo    backend\interrogation_pipeline\static\index.html
+    echo  is missing. The dashboard won't load.
+    echo  Try: cd frontend ^&^& npm run build
+    echo ============================================
+    pause
+    exit /b 1
 )
 
 REM ── Verify .env exists ────────────────────────────────────────

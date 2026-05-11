@@ -90,35 +90,40 @@ app.include_router(cookies_router, prefix="/api")
 
 
 # ──── Static frontend (built React app) + SPA fallback ────
-if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+# The check is dynamic on every request so the server picks up a fresh build
+# without needing a restart. /assets/* is served manually for the same reason
+# (StaticFiles mount must point at a dir that exists at mount time).
+@app.get("/assets/{file_path:path}")
+async def serve_asset(file_path: str):
+    f = STATIC_DIR / "assets" / file_path
+    if f.is_file():
+        return FileResponse(f)
+    return JSONResponse({"error": "asset not found"}, status_code=404)
 
-    @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str):
-        # API paths shouldn't reach here, but guard anyway.
-        if full_path.startswith("api/"):
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        # Real static files at the root (favicon, robots.txt, etc.) are served
-        # as-is. Everything else falls through to index.html so React Router can
-        # take over.
+
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    # /api/* routes are registered above this catch-all, but guard anyway.
+    if full_path.startswith("api/"):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    # Real files at the static root (favicon.svg, robots.txt, etc.) served as-is.
+    if full_path:
         candidate = STATIC_DIR / full_path
-        if full_path and candidate.is_file():
+        if candidate.is_file():
             return FileResponse(candidate)
-        index = STATIC_DIR / "index.html"
-        if index.exists():
-            return FileResponse(index)
-        return JSONResponse(
-            {
-                "error": "Frontend not built",
-                "hint": "Run `npm install && npm run build` in the frontend/ directory",
-            },
-            status_code=503,
-        )
-else:
-    @app.get("/")
-    async def placeholder() -> dict[str, str]:
-        return {
+
+    index = STATIC_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+
+    return JSONResponse(
+        {
             "status": "backend ok",
-            "frontend": "not built — run `npm install && npm run build` in frontend/",
+            "frontend": "not built yet — run `npm run build` in frontend/ "
+                        "(or use start.bat / start.command which does it for you)",
             "api_docs": "/docs",
-        }
+            "static_dir": str(STATIC_DIR),
+        },
+        status_code=503,
+    )
