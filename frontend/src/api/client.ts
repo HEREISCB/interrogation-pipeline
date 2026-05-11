@@ -85,9 +85,12 @@ export const api = {
     }),
   apiKeyStatus: () => jsonFetch<ApiKeyStatus>("/settings/api-keys/status"),
   systemHealth: () =>
-    jsonFetch<{ missing_keys: string[]; stale_cookies: string[] }>(
-      "/settings/health"
-    ),
+    jsonFetch<{
+      missing_required: string[];
+      missing_optional: string[];
+      missing_keys: string[]; // back-compat — equal to missing_required
+      stale_cookies: string[];
+    }>("/settings/health"),
 
   statsP4: () => jsonFetch<P4Stats>("/stats/p4"),
   statsCost: () => jsonFetch<CostStats>("/stats/cost"),

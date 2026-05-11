@@ -9,17 +9,17 @@ export default function HealthBanner() {
   });
 
   if (!health.data) return null;
-  const { missing_keys, stale_cookies } = health.data;
+  const { missing_required, stale_cookies } = health.data;
 
-  if (missing_keys.length === 0 && stale_cookies.length === 0) return null;
+  if (missing_required.length === 0 && stale_cookies.length === 0) return null;
 
   return (
     <div>
-      {missing_keys.length > 0 && (
+      {missing_required.length > 0 && (
         <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-sm px-5 py-2">
           <div className="max-w-6xl mx-auto">
             <strong>Setup needed:</strong> missing API keys —{" "}
-            <span className="font-mono">{missing_keys.join(", ")}</span>. Add
+            <span className="font-mono">{missing_required.join(", ")}</span>. Add
             them to <code className="mx-1 px-1 bg-amber-100 rounded">backend/.env</code>
             and restart.
           </div>

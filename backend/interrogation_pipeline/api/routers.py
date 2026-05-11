@@ -509,15 +509,23 @@ async def api_keys_status() -> dict[str, str]:
 
 @settings_router.get("/health")
 async def system_health() -> dict[str, Any]:
-    """Aggregated health used by the dashboard banner."""
+    """Aggregated health used by the dashboard banner.
+
+    `missing_required` are services the pipeline can't function without
+    (Anthropic, Tavily, Trello). `missing_optional` are nice-to-have
+    integrations (Webshare) — the dashboard shouldn't red-flag those.
+    """
+    REQUIRED = ("anthropic", "tavily", "trello")
+    statuses = await api_keys_status()
     async with session_scope() as session:
         stale = await CookieHealthRepo(session).stale_files()
     return {
-        "missing_keys": [
-            k
-            for k, v in (await api_keys_status()).items()
-            if v == "missing"
+        "missing_required": [k for k in REQUIRED if statuses.get(k) == "missing"],
+        "missing_optional": [
+            k for k, v in statuses.items() if v == "missing" and k not in REQUIRED
         ],
+        # Back-compat alias for older frontends still on this key
+        "missing_keys": [k for k in REQUIRED if statuses.get(k) == "missing"],
         "stale_cookies": [s.cookies_path for s in stale],
     }
 

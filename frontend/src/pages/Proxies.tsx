@@ -49,6 +49,12 @@ export default function Proxies() {
           Bulk import
         </h2>
         <p className="text-xs text-soft mb-2">
+          Proxies are <strong>optional</strong>. The default proxy mode is{" "}
+          <code>auto</code> — the scraper goes direct first and only falls back to
+          a proxy if YouTube rate-limits. You only need to fill this pool if you
+          want to be ready for that fallback.
+        </p>
+        <p className="text-xs text-soft mb-2">
           Paste one proxy per line. Accepted formats: <code>host:port:user:pass</code>{" "}
           (Webshare), <code>user:pass@host:port</code>, <code>http://user:pass@host:port</code>.
           Comments (<code>#</code>) and blank lines ignored. Duplicates collapse silently.
