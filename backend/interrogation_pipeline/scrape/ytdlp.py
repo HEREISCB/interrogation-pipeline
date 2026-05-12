@@ -185,11 +185,38 @@ async def list_recent_uploads(
     limit: int = 50,
     timeout: int = 60,
 ) -> list[str]:
-    """Used as RSS overflow fallback: enumerate the N most recent video IDs.
+    """Enumerate the N most recent video IDs. Convenience wrapper that drops
+    everything except the IDs — for callers that don't need dates/titles."""
+    records = await enumerate_uploads(
+        channel_id,
+        cookies_path=cookies_path,
+        proxy=proxy,
+        limit=limit,
+        timeout=timeout,
+    )
+    return [r["id"] for r in records if r.get("id")]
 
-    Cheap (one network call), no captions downloaded. Used when RSS returns
-    its 15-cap and we suspect the channel posted more than 15 in the lookback.
+
+async def enumerate_uploads(
+    channel_id: str,
+    *,
+    cookies_path: Path,
+    proxy: ProxySession,
+    limit: int = 50,
+    timeout: int = 60,
+) -> list[dict[str, str]]:
+    """List the N most recent uploads with id + title + upload_date.
+
+    Returns a list of dicts shaped like:
+        {"id": "abc123", "title": "Cop interrogates suspect…",
+         "upload_date": "20260510", "upload_date_iso": "2026-05-10T00:00:00+00:00"}
+
+    Used as the primary discovery method (RSS feeds are blocked by YouTube
+    on many residential/datacenter IPs). One yt-dlp call per channel,
+    metadata-only — no captions/audio/video.
     """
+    import json as _json
+
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
     cmd = [
         YT_DLP_BIN,
@@ -200,12 +227,10 @@ async def list_recent_uploads(
         "--no-check-certificates",
         "--extractor-args", "youtube:player_client=tv",
         "--js-runtimes", "node",
-        # Allow yt-dlp to fetch the EJS solver script from npm if not bundled.
-        # Required as of yt-dlp 2026.5 for SABR / n-challenge handling.
         "--remote-components", "ejs:github",
         "--cookies", str(cookies_path),
         "--playlist-end", str(limit),
-        "--print", "%(id)s",
+        "--print", "%(.{id,title,upload_date,timestamp})j",
         "--quiet",
     ]
     if proxy.proxy_url:
@@ -215,7 +240,36 @@ async def list_recent_uploads(
         cls = classify_stderr(stderr)
         err_cls = _outcome_error_class(cls)
         raise err_cls(stderr.strip()[:1500] or f"yt-dlp rc={rc}")
-    return [line.strip() for line in stdout.splitlines() if line.strip()]
+
+    out: list[dict[str, str]] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = _json.loads(line)
+        except _json.JSONDecodeError:
+            continue
+        if not rec.get("id"):
+            continue
+        # Normalize upload_date (YYYYMMDD from yt-dlp) into an ISO timestamp.
+        # Prefer timestamp (epoch seconds) when present — that's authoritative.
+        from datetime import UTC, datetime
+
+        iso = ""
+        ts = rec.get("timestamp")
+        if isinstance(ts, (int, float)):
+            iso = datetime.fromtimestamp(ts, tz=UTC).isoformat(timespec="seconds")
+        else:
+            ud = rec.get("upload_date") or ""
+            if len(ud) == 8 and ud.isdigit():
+                try:
+                    iso = datetime(int(ud[0:4]), int(ud[4:6]), int(ud[6:8]), tzinfo=UTC).isoformat(timespec="seconds")
+                except ValueError:
+                    iso = ""
+        rec["upload_date_iso"] = iso
+        out.append(rec)
+    return out
 
 
 def _outcome_error_class(cls: Classification) -> type[ScrapeError]:

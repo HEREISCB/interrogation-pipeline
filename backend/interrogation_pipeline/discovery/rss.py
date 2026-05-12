@@ -15,10 +15,14 @@ YT_RSS_USER_TEMPLATE = "https://www.youtube.com/feeds/videos.xml?user={user}"
 YT_HANDLE_PAGE_TEMPLATE = "https://www.youtube.com/{handle}"
 
 # Used to extract the canonical channel ID from a @handle page's HTML.
+# Order matters: the first patterns are the most reliable (canonical/og:url
+# always point at THE channel), the later ones can pick up the wrong UC ID
+# from sidebar/featured-channel sections of the HTML.
 _CHANNEL_ID_PATTERNS = (
-    re.compile(rb'"channelId":"(UC[\w-]{20,})"'),
+    re.compile(rb'<link rel="canonical" href="https://www\.youtube\.com/channel/(UC[\w-]{20,})">'),
+    re.compile(rb'<meta property="og:url" content="https://www\.youtube\.com/channel/(UC[\w-]{20,})">'),
     re.compile(rb'"externalChannelId":"(UC[\w-]{20,})"'),
-    re.compile(rb'href="https://www\.youtube\.com/channel/(UC[\w-]{20,})"'),
+    re.compile(rb'"channelId":"(UC[\w-]{20,})"'),
 )
 
 # YT Atom XML namespaces

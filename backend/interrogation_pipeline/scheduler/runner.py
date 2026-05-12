@@ -25,7 +25,6 @@ from typing import Any
 from interrogation_pipeline.config import runtime as runtime_cfg
 from interrogation_pipeline.config.settings import settings as env_settings
 from interrogation_pipeline.dedup import banned, fuzzy
-from interrogation_pipeline.discovery import fetch_recent_videos
 from interrogation_pipeline.scan.scanner import (
     CreditExhausted,
     scan_transcript,
@@ -133,21 +132,25 @@ async def _phase_yt_totals(run_id: int, pipeline: str | None) -> dict[str, int]:
 
 
 async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None = None) -> dict[str, int]:
-    """Hit RSS for every active channel; insert new VideoStubs.
+    """List each active channel's recent uploads via yt-dlp --flat-playlist
+    and insert new pending VideoStubs.
 
-    When RSS reports an overflow (15-cap with oldest still inside lookback),
-    immediately invoke yt-dlp --flat-playlist for that channel only, to backfill
-    the older uploads RSS couldn't show us. Cheap (one yt-dlp call per overflow
-    channel) and self-correcting.
+    Why not RSS? YouTube returns 404 on /feeds/videos.xml from most residential
+    and datacenter IPs as of 2026-05. yt-dlp uses the innertube API which is
+    not subject to the same block. One call per channel, metadata-only, ~2s.
     """
+    from interrogation_pipeline.scrape.ytdlp import enumerate_uploads
+    from interrogation_pipeline.discovery.rss import resolve_channel_id
+
     pool = WebshareSessionPool()
     async with session_scope() as session:
         chans = await ChannelRepo(session).list_active(pipeline=pipeline)
     counts = {
         "channels_checked": 0,
         "videos_discovered": 0,
-        "rss_overflow_channels": 0,
-        "overflow_backfilled": 0,
+        "resolve_failed": 0,
+        "no_cookies": 0,
+        "ytdlp_failed": 0,
     }
 
     cutoff_dt = datetime.now(UTC) - timedelta(hours=lookback_hours)
@@ -155,97 +158,96 @@ async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None
 
     for ch in chans:
         counts["channels_checked"] += 1
-        # Use channel.last_seen_iso minus lookback as the floor; if no last_seen,
-        # use cutoff alone (initial run).
+
         floor = ch.last_seen_iso or ""
         effective_since = max(cutoff, floor) if floor else cutoff
         if ch.since_iso and ch.since_iso > effective_since:
             effective_since = ch.since_iso
 
-        try:
-            result = await fetch_recent_videos(ch.id, since_iso=effective_since)
-        except Exception as e:  # noqa: BLE001
-            await _log(run_id, "discover", f"RSS fail for {ch.id}: {e}", level="warn")
-            continue
+        # Resolve @handle → UC ID. yt-dlp accepts both, but the URL form
+        # `youtube.com/channel/<UC>/videos` is the most reliable.
+        target_id = ch.id
+        if not target_id.startswith("UC"):
+            try:
+                resolved = await resolve_channel_id(target_id)
+            except Exception:  # noqa: BLE001
+                resolved = None
+            if not resolved:
+                counts["resolve_failed"] += 1
+                await _log(
+                    run_id, "discover",
+                    f"could not resolve {ch.id} to a UC channel ID",
+                    level="warn",
+                )
+                continue
+            target_id = resolved
 
-        if result.rss_overflow:
-            counts["rss_overflow_channels"] += 1
+        if not Path(ch.cookies_path).exists():
+            counts["no_cookies"] += 1
             await _log(
-                run_id,
-                "discover",
-                f"RSS overflow on {ch.id} — backfilling via yt-dlp --flat-playlist.",
+                run_id, "discover",
+                f"cookies file missing for {ch.id}: {ch.cookies_path}",
                 level="warn",
             )
-            async with session_scope() as session:
-                ch_db = await ChannelRepo(session).get(ch.id)
-                if ch_db:
-                    ch_db.rss_overflow = True
-
-            # Resolve to UC ID if needed (RSS already did this internally; if
-            # we don't have it on the channel record, list_recent_uploads will
-            # fail. We accept the failure and try again next run.)
-            target_id = ch.id
-            if not target_id.startswith("UC"):
-                from interrogation_pipeline.discovery.rss import resolve_channel_id
-                resolved = await resolve_channel_id(target_id)
-                if resolved:
-                    target_id = resolved
-            if target_id.startswith("UC") and Path(ch.cookies_path).exists():
-                proxy = await pool.acquire()
-                try:
-                    extra_ids = await list_recent_uploads(
-                        target_id,
-                        cookies_path=Path(ch.cookies_path),
-                        proxy=proxy,
-                        limit=50,
-                    )
-                except Exception as e:  # noqa: BLE001
-                    await _log(
-                        run_id,
-                        "discover",
-                        f"Backfill failed for {ch.id}: {str(e)[:200]}",
-                        level="warn",
-                    )
-                    extra_ids = []
-                if extra_ids:
-                    rows = [
-                        {
-                            "id": vid,
-                            "channel_id": ch.id,
-                            "title": None,
-                            "published_iso": _utc_now(),  # unknown publish time
-                            "status": "pending",
-                            "attempts": 0,
-                            "discovered_at": _utc_now(),
-                        }
-                        for vid in extra_ids
-                    ]
-                    async with session_scope() as session:
-                        inserted = await VideoRepo(session).insert_or_ignore_many(rows)
-                        counts["overflow_backfilled"] += inserted
-
-        if not result.videos:
             continue
 
+        proxy = await pool.acquire()
+        try:
+            records = await enumerate_uploads(
+                target_id,
+                cookies_path=Path(ch.cookies_path),
+                proxy=proxy,
+                limit=50,
+            )
+        except Exception as e:  # noqa: BLE001
+            counts["ytdlp_failed"] += 1
+            await _log(
+                run_id, "discover",
+                f"yt-dlp listing failed for {ch.id}: {str(e)[:200]}",
+                level="warn",
+            )
+            continue
+
+        # Filter to videos newer than `effective_since`. yt-dlp returns newest
+        # first; records without a date sort to the bottom so we keep them
+        # (better to scan a maybe-old video than miss a brand-new one).
+        fresh: list[dict[str, str]] = []
+        for r in records:
+            iso = r.get("upload_date_iso") or ""
+            if not iso or iso > effective_since:
+                fresh.append(r)
+
+        if not fresh:
+            continue
+
+        now_iso = _utc_now()
         rows = [
             {
-                "id": s.video_id,
+                "id": r["id"],
                 "channel_id": ch.id,
-                "title": s.title,
-                "published_iso": s.published_iso,
+                "title": r.get("title"),
+                "published_iso": r.get("upload_date_iso") or now_iso,
                 "status": "pending",
                 "attempts": 0,
-                "discovered_at": _utc_now(),
+                "discovered_at": now_iso,
             }
-            for s in result.videos
+            for r in fresh
         ]
         async with session_scope() as session:
             inserted = await VideoRepo(session).insert_or_ignore_many(rows)
             counts["videos_discovered"] += inserted
-            latest = result.videos[-1]
-            await ChannelRepo(session).update_last_seen(
-                ch.id, latest.published_iso, latest.video_id
+            latest_iso = max(
+                (r.get("upload_date_iso") or "" for r in fresh),
+                default="",
             )
+            latest_id = next(
+                (r["id"] for r in fresh if (r.get("upload_date_iso") or "") == latest_iso),
+                fresh[0]["id"],
+            )
+            if latest_iso:
+                await ChannelRepo(session).update_last_seen(
+                    ch.id, latest_iso, latest_id
+                )
 
     return counts
 
