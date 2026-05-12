@@ -3,7 +3,16 @@ import { api } from "@/api/client";
 import { formatLocal } from "@/lib/format";
 
 export default function Runs() {
-  const { data } = useQuery({ queryKey: ["runs"], queryFn: () => api.runs(50) });
+  const { data } = useQuery({
+    queryKey: ["runs"],
+    queryFn: () => api.runs(50),
+    // Adaptive polling: fast (3s) while anything is running so phase
+    // transitions show up live; idle (30s) otherwise to keep traffic low.
+    refetchInterval: (query) => {
+      const rows = query.state.data ?? [];
+      return rows.some((r) => r.status === "running") ? 3_000 : 30_000;
+    },
+  });
   const rows = data ?? [];
 
   return (

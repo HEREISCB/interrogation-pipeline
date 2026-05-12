@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 
 export default function StatsBar() {
-  const { data } = useQuery({ queryKey: ["stats-p4"], queryFn: api.statsP4 });
+  const { data } = useQuery({
+    queryKey: ["stats-p4"],
+    queryFn: api.statsP4,
+    // Live counters during runs: cheap query, refresh every 10s so the
+    // stat tiles tick up as discover/scan/verify make progress.
+    refetchInterval: 10_000,
+  });
   if (!data) return <div className="h-20" />;
 
   const cells: { label: string; value: number; pct?: string; tone?: string }[] = [

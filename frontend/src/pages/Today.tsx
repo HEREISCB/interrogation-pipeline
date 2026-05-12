@@ -12,28 +12,42 @@ const PIPELINES = ["P4", "P1", "P3", "P2", "ALL"];
 
 export default function Today() {
   const qc = useQueryClient();
-  const today = useQuery({ queryKey: ["today"], queryFn: api.today });
+  // Latest run — polled every 3s so this page detects a run started in
+  // another tab / by the cron scheduler / before this tab was opened.
+  const runs = useQuery({
+    queryKey: ["runs"],
+    queryFn: () => api.runs(1),
+    refetchInterval: 3_000,
+  });
+  const latest = runs.data?.[0];
+  const isRunning = latest?.status === "running";
+
+  const today = useQuery({
+    queryKey: ["today"],
+    queryFn: api.today,
+    // While a run is active, also poll the snapshot so cases pop in live
+    // even if the SSE phase event hasn't fired yet.
+    refetchInterval: isRunning ? 5_000 : false,
+  });
   const [rejectedOpen, setRejectedOpen] = useState(false);
   const [dupOldOpen, setDupOldOpen] = useState(false);
   const [pipeline, setPipeline] = useState("P4");
-  const [streaming, setStreaming] = useState(false);
 
   const trigger = useMutation({
     mutationFn: () => api.triggerRun(pipeline),
     onSuccess: () => {
-      setStreaming(true);
       qc.invalidateQueries({ queryKey: ["runs"] });
     },
   });
 
-  const stream = useRunStream(streaming);
-  // Refetch the Today snapshot whenever the run finishes a phase.
+  // SSE is the fast path (phase changes show up instantly). Always active
+  // whenever the latest run is still running, no matter who triggered it.
+  const stream = useRunStream(isRunning);
   useEffect(() => {
     if (stream.payload) {
       qc.invalidateQueries({ queryKey: ["today"] });
       qc.invalidateQueries({ queryKey: ["runs"] });
       qc.invalidateQueries({ queryKey: ["stats-p4"] });
-      if (stream.payload.status !== "running") setStreaming(false);
     }
   }, [stream.payload, qc]);
 
@@ -68,27 +82,32 @@ export default function Today() {
             ))}
           </select>
           <button
-            disabled={trigger.isPending || streaming}
+            disabled={trigger.isPending || isRunning}
             onClick={() => trigger.mutate()}
             className="bg-ink text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-black disabled:opacity-50"
           >
-            {streaming ? "Running…" : trigger.isPending ? "Triggering…" : "Run now"}
+            {isRunning ? "Running…" : trigger.isPending ? "Triggering…" : "Run now"}
           </button>
         </div>
       </div>
 
-      {streaming && stream.payload && (
-        <div className="mb-4 text-sm border border-blue-200 bg-blue-50 text-blue-900 rounded-md px-3 py-2 flex items-center gap-3">
+      {isRunning && (
+        <div className="mb-4 text-sm border border-blue-200 bg-blue-50 text-blue-900 rounded-md px-3 py-2 flex items-center gap-3 flex-wrap">
           <span className="inline-block w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-          <strong>Run #{stream.payload.run_id}</strong>
-          <span className="text-soft">phase: {stream.payload.phase || "—"}</span>
-          {Object.keys(stream.payload.counts).length > 0 && (
-            <span className="text-xs font-mono text-soft">
-              {Object.entries(stream.payload.counts)
-                .map(([k, v]) => `${k}:${v}`)
-                .join(" · ")}
-            </span>
-          )}
+          <strong>Run #{stream.payload?.run_id ?? latest?.id}</strong>
+          <span className="text-soft">
+            phase: {stream.payload?.phase || latest?.phase || "—"}
+          </span>
+          {(() => {
+            const counts = stream.payload?.counts ?? latest?.counts ?? {};
+            const entries = Object.entries(counts);
+            if (entries.length === 0) return null;
+            return (
+              <span className="text-xs font-mono text-soft">
+                {entries.map(([k, v]) => `${k}:${v}`).join(" · ")}
+              </span>
+            );
+          })()}
         </div>
       )}
 
