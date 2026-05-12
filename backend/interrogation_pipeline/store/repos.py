@@ -275,6 +275,25 @@ class RunRepo:
         q = select(Run).where(Run.status == "running").order_by(Run.started_at.desc()).limit(1)
         return (await self.s.execute(q)).scalar_one_or_none()
 
+    async def mark_orphans_failed(self) -> int:
+        """Mark any status='running' rows as failed.
+
+        Called at server startup: if the process died (Ctrl+C, crash, reboot)
+        mid-run, the row stays 'running' in the DB forever and blocks future
+        manual triggers via the concurrent-run guard. This is the cleanup.
+        """
+        stmt = (
+            update(Run)
+            .where(Run.status == "running")
+            .values(
+                status="failed",
+                completed_at=utc_now_iso(),
+                error="server stopped before run completed",
+            )
+        )
+        result = await self.s.execute(stmt)
+        return result.rowcount or 0
+
     async def latest(self) -> Optional[Run]:
         q = select(Run).order_by(Run.started_at.desc()).limit(1)
         return (await self.s.execute(q)).scalar_one_or_none()

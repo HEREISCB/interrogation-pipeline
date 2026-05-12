@@ -26,7 +26,8 @@ from interrogation_pipeline.bootstrap import seed_all_channels
 from interrogation_pipeline.config.runtime import seed_defaults
 from interrogation_pipeline.scheduler.scheduler import start_scheduler, stop_scheduler
 from interrogation_pipeline.scrape.proxies import maybe_seed_from_env
-from interrogation_pipeline.store.db import init_db
+from interrogation_pipeline.store.db import init_db, session_scope
+from interrogation_pipeline.store.repos import RunRepo
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,13 @@ async def lifespan(app: FastAPI):
     seeded_proxies = await maybe_seed_from_env()
     if seeded_proxies:
         log.info("Seeded %d proxies from WEBSHARE_* env vars.", seeded_proxies)
+    async with session_scope() as session:
+        orphans = await RunRepo(session).mark_orphans_failed()
+    if orphans:
+        log.warning(
+            "Marked %d orphaned 'running' run(s) as failed (server didn't shut "
+            "down cleanly last time).", orphans
+        )
     log.info("Database ready.")
     try:
         await start_scheduler()
