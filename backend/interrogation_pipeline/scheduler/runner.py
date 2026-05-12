@@ -406,12 +406,68 @@ async def _phase_scan(run_id: int, concurrency: int) -> dict[str, int]:
     return dict(counts)
 
 
+async def _resolve_trello_board_ids(run_id: int) -> dict[str, str]:
+    """Return {'old': id, 'new': id} for the two configured boards.
+
+    Auto-discovers by name (FOIA Trials / ULF) if env didn't pin an ID, and
+    caches the resolved IDs back to the config table so future runs skip the
+    lookup. Returns whatever's available; missing boards are simply omitted.
+    """
+    cfg = await runtime_cfg.load()
+    if not env_settings.trello_token:
+        return {}
+    result: dict[str, str] = {}
+    async with TrelloClient() as tc:
+        for label, bid, bname in (
+            ("old", cfg.old_board_id, cfg.old_board_name),
+            ("new", cfg.new_board_id, cfg.new_board_name),
+        ):
+            if _looks_like_trello_id(bid):
+                result[label] = bid
+                continue
+            if not bname:
+                continue
+            try:
+                board = await tc.find_board_by_name(bname)
+            except Exception as e:  # noqa: BLE001
+                await _log(
+                    run_id,
+                    "verify_dedup",
+                    f"lookup for {label} board '{bname}' failed: {str(e)[:200]}",
+                    level="warn",
+                )
+                continue
+            if not board:
+                await _log(
+                    run_id,
+                    "verify_dedup",
+                    f"{label} board '{bname}' not found on this Trello account — "
+                    f"skipping dedup against it.",
+                    level="warn",
+                )
+                continue
+            resolved_id = board["id"]
+            await runtime_cfg.patch({f"{label}_board_id": resolved_id})
+            result[label] = resolved_id
+    return result
+
+
 async def _phase_verify_and_dedup(run_id: int) -> dict[str, int]:
-    """Build Case rows for accepted scans, verify via Tavily+Haiku, dedup."""
+    """Build Case rows for accepted scans, verify via Tavily+Haiku, dedup.
+
+    Dedup strategy: for each new case, search Trello for the YouTube video ID
+    on both configured boards. If any card on either board has the video URL
+    in its description, the case is a duplicate. Replaces the old bulk-cache
+    fuzzy match — that approach didn't scale to boards with 100k+ cards.
+    """
     from interrogation_pipeline.verify.verifier import verify_case
 
     counts = defaultdict(int)
     cfg = await runtime_cfg.load()
+    board_ids = await _resolve_trello_board_ids(run_id)
+    old_bid = board_ids.get("old")
+    new_bid = board_ids.get("new")
+    search_board_ids = [b for b in (old_bid, new_bid) if b]
 
     # Pull accepted scans that don't yet have a Case row.
     async with session_scope() as session:
@@ -429,6 +485,9 @@ async def _phase_verify_and_dedup(run_id: int) -> dict[str, int]:
             select(SR).where(SR.has_homicide.is_(True))
         )).scalars().all()
         new_scans = [s for s in scans if s.id not in existing_case_scan_ids]
+
+    # One TrelloClient for the whole batch (HTTP keep-alive).
+    tc = TrelloClient() if env_settings.trello_token and search_board_ids else None
 
     for sr in new_scans:
         location = sr.location
@@ -479,48 +538,48 @@ async def _phase_verify_and_dedup(run_id: int) -> dict[str, int]:
             # Link case → video (1-to-1 for now; multi-video merging happens on dedup pass)
             from interrogation_pipeline.store.models import CaseVideo
             session.add(CaseVideo(case_id=case.id, video_id=sr.video_id))
+            await session.flush()
+            case_id = case.id
 
         counts["cases_built"] += 1
 
-    # External dedup against cached Trello cards.
-    async with session_scope() as session:
-        cases = await CaseRepo(session).list_by_run(run_id)
-        cached = await TrelloRepo(session).all_cached(
-            [b for b in (cfg.old_board_id, cfg.new_board_id) if b]
-        )
+        # Per-case URL dedup: ask Trello if any card on either board references
+        # this YouTube video. One /search call per case = ~10/day, not 100k.
+        dedup_status = "unique"
+        matched_card_id: str | None = None
+        if tc is not None and sr.video_id:
+            try:
+                hits = await tc.search_cards_for_video(sr.video_id, search_board_ids)
+            except Exception as e:  # noqa: BLE001
+                await _log(
+                    run_id,
+                    "verify_dedup",
+                    f"Trello search failed for video {sr.video_id}: {str(e)[:200]}. "
+                    f"Marking case as unique; push-time dedup is still a backstop.",
+                    level="warn",
+                )
+                hits = []
+            for hit in hits:
+                hit_board = hit.get("idBoard")
+                if hit_board == new_bid:
+                    dedup_status = "exists_new"
+                    matched_card_id = hit.get("id")
+                    break
+                if hit_board == old_bid:
+                    # Keep looking — a new-board hit takes priority if both exist.
+                    dedup_status = "exists_old"
+                    matched_card_id = hit.get("id")
 
-    for c in cases:
-        for tc in cached:
-            stub_a = fuzzy.CaseStub(
-                defendant_name=c.defendant_name,
-                victim_name=c.victim_name,
-                state=c.state,
-                year=c.year,
-            )
-            stub_b = fuzzy.CaseStub(
-                defendant_name=tc.parsed_defendant,
-                victim_name=tc.parsed_victim,
-                state=tc.parsed_state,
-                year=tc.parsed_year,
-            )
-            if fuzzy.is_duplicate(stub_a, stub_b):
-                tag = "exists_new" if tc.board_id == cfg.new_board_id else "exists_old"
-                async with session_scope() as session:
-                    case = await CaseRepo(session).get(c.id)
-                    if case:
-                        case.dedup_status = tag
-                        case.matched_trello_card_id = tc.trello_card_id
-                        case.status = "pending_review"
-                counts[tag] += 1
-                break
-        else:
-            async with session_scope() as session:
-                case = await CaseRepo(session).get(c.id)
-                if case:
-                    case.dedup_status = "unique"
-                    case.status = "pending_review"
-            counts["unique"] += 1
+        async with session_scope() as session:
+            c = await CaseRepo(session).get(case_id)
+            if c:
+                c.dedup_status = dedup_status
+                c.matched_trello_card_id = matched_card_id
+                c.status = "pending_review"
+        counts[dedup_status] += 1
 
+    if tc is not None:
+        await tc.aclose()
     return dict(counts)
 
 
@@ -636,159 +695,6 @@ def _looks_like_trello_id(value: str) -> bool:
     return all(c in "0123456789abcdefABCDEF" for c in v)
 
 
-_TRELLO_CACHE_TTL_HOURS = 6
-# Per-board cap. Newest cards matter most for dedup; if a board has more than
-# this, we cache the newest N and rely on push-time Trello queries for the
-# rest. Prevents the pipeline from spending hours paginating huge boards.
-_TRELLO_CACHE_MAX_CARDS_PER_BOARD = 10_000
-# Hard deadline across the whole phase (across both boards). Anything not
-# fetched in time is left out; push-time dedup still queries Trello directly.
-_TRELLO_CACHE_DEADLINE_SECONDS = 120
-
-
-async def _phase_refresh_trello_cache(run_id: int) -> int:
-    """Pull all cards from old + new boards into trello_card_cache for dedup.
-
-    Fail-soft: a single bad board ID, transient network error, or 404 should
-    NOT kill the whole daily run. The dedup cache is an optimization — without
-    it, push-time dedup still works (it queries Trello directly).
-
-    Auto-discovers board IDs by name when only the name is configured.
-
-    Skips the (slow, multi-minute) full pagination if the cache was last
-    refreshed within the last TTL window. Boards with 5k+ cards make this
-    refresh expensive; once a day is plenty for dedup purposes.
-    """
-    cfg = await runtime_cfg.load()
-    if not env_settings.trello_token:
-        return 0
-
-    # Freshness check — skip the pagination entirely if last refresh is recent.
-    async with session_scope() as session:
-        last_synced_iso = await ConfigRepo(session).get("trello_cache_synced_at", "")
-    if last_synced_iso:
-        try:
-            last_dt = datetime.fromisoformat(last_synced_iso)
-            if datetime.now(UTC) - last_dt < timedelta(hours=_TRELLO_CACHE_TTL_HOURS):
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"cache refreshed {last_synced_iso} (< {_TRELLO_CACHE_TTL_HOURS}h ago) — skipping. "
-                    f"Push-time dedup still queries Trello directly.",
-                    level="info",
-                )
-                return 0
-        except ValueError:
-            pass  # malformed timestamp — fall through and refresh
-
-    total = 0
-    async with TrelloClient() as tc:
-        boards: list[tuple[str, str]] = []
-        for label, bid, bname in (
-            ("old", cfg.old_board_id, cfg.old_board_name),
-            ("new", cfg.new_board_id, cfg.new_board_name),
-        ):
-            if _looks_like_trello_id(bid):
-                boards.append((label, bid))
-                continue
-            if bid:  # user typed something that doesn't look like an ID
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"skipping {label} board: '{bid}' is not a valid Trello board ID "
-                    f"(expected 24-char hex). Edit backend/.env or leave blank to "
-                    f"auto-discover by name.",
-                    level="warn",
-                )
-                continue
-            # No ID set — try to resolve by name.
-            if not bname:
-                continue
-            try:
-                board = await tc.find_board_by_name(bname)
-            except Exception as e:  # noqa: BLE001
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"lookup for {label} board '{bname}' failed: {str(e)[:200]}",
-                    level="warn",
-                )
-                continue
-            if not board:
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"{label} board '{bname}' not found on this Trello account — "
-                    f"skipping dedup against it. (Open the board and copy the 24-char "
-                    f"ID from trello.com/b/<shortcode>.json if auto-discover keeps failing.)",
-                    level="warn",
-                )
-                continue
-            resolved_id = board["id"]
-            await runtime_cfg.patch({f"{label}_board_id": resolved_id})
-            boards.append((label, resolved_id))
-
-        succeeded = False
-        deadline = datetime.now(UTC) + timedelta(seconds=_TRELLO_CACHE_DEADLINE_SECONDS)
-        for label, bid in boards:
-            if datetime.now(UTC) >= deadline:
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"hit {_TRELLO_CACHE_DEADLINE_SECONDS}s phase deadline before "
-                    f"reaching {label} board {bid}. Push-time dedup will still "
-                    f"query Trello directly for any case sent to it.",
-                    level="warn",
-                )
-                break
-            try:
-                cards = await asyncio.wait_for(
-                    tc.list_all_cards(
-                        bid,
-                        include_archived=True,
-                        max_cards=_TRELLO_CACHE_MAX_CARDS_PER_BOARD,
-                    ),
-                    timeout=(deadline - datetime.now(UTC)).total_seconds(),
-                )
-                parsed = [parse_card_for_dedup(c) for c in cards]
-                async with session_scope() as session:
-                    await TrelloRepo(session).replace_cache_for_board(bid, parsed)
-                total += len(cards)
-                succeeded = True
-                if len(cards) >= _TRELLO_CACHE_MAX_CARDS_PER_BOARD:
-                    await _log(
-                        run_id,
-                        "trello_cache",
-                        f"{label} board {bid}: cached newest {len(cards)} cards "
-                        f"(per-board cap). Older cards aren't in the pre-cache; "
-                        f"push-time dedup still queries Trello directly.",
-                        level="info",
-                    )
-            except asyncio.TimeoutError:
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"timed out fetching {label} board {bid} within the phase "
-                    f"deadline. Partial cache (if any) was discarded.",
-                    level="warn",
-                )
-            except Exception as e:  # noqa: BLE001
-                await _log(
-                    run_id,
-                    "trello_cache",
-                    f"could not refresh {label} board {bid}: {str(e)[:200]}. "
-                    f"Continuing without pre-cached dedup for this board.",
-                    level="warn",
-                )
-
-    if succeeded:
-        async with session_scope() as session:
-            await ConfigRepo(session).set(
-                "trello_cache_synced_at", datetime.now(UTC).isoformat(timespec="seconds")
-            )
-    return total
-
-
 # ──────────────────────────────────────────────────────────────────────
 # The orchestrator
 # ──────────────────────────────────────────────────────────────────────
@@ -813,10 +719,6 @@ async def run_daily(*, trigger: str = "scheduled", pipeline: str | None = "P4") 
         async with session_scope() as session:
             await RunRepo(session).set_phase(run_id, "yt_totals")
         counts.update({"yt_totals_" + k: v for k, v in (await _phase_yt_totals(run_id, pipeline)).items()})
-
-        async with session_scope() as session:
-            await RunRepo(session).set_phase(run_id, "trello_cache")
-        counts["trello_cards_cached"] = await _phase_refresh_trello_cache(run_id)
 
         async with session_scope() as session:
             await RunRepo(session).set_phase(run_id, "discover")

@@ -114,11 +114,11 @@ class PushBody(BaseModel):
 async def push_to_trello(case_id: int, body: PushBody | None = None) -> dict[str, Any]:
     """Push a single case to the new (ULF) Trello board.
 
-    Performs a last-mile dedup re-check against the cached new-board cards
-    before creating, so a fast double-click doesn't make duplicates.
+    Last-mile dedup: search Trello for the YouTube video ID on the new board.
+    If any card already references it, treat as a duplicate. One /search call
+    per click — fast and live.
     """
     from interrogation_pipeline.config import runtime as runtime_cfg
-    from interrogation_pipeline.dedup import fuzzy
     from interrogation_pipeline.store.repos import TrelloRepo
     from interrogation_pipeline.trello.card_format import build_card_description
     from interrogation_pipeline.trello.client import TrelloClient
@@ -141,6 +141,26 @@ async def push_to_trello(case_id: int, body: PushBody | None = None) -> dict[str
     if not env_settings.trello_token:
         raise HTTPException(503, "Trello token not configured (.env: TRELLO_TOKEN)")
 
+    # Fetch primary scan + video ID up front; we need the video_id for dedup.
+    from sqlalchemy import select
+    from interrogation_pipeline.store.models import (
+        CaseVideo,
+        ScanResult as SRModel,
+    )
+
+    async with session_scope() as session:
+        primary_scan = await session.get(SRModel, case.primary_scan_id)
+        cv_row = (
+            await session.execute(
+                select(CaseVideo.video_id).where(CaseVideo.case_id == case.id)
+            )
+        ).first()
+        video_id = (
+            cv_row[0]
+            if cv_row
+            else (primary_scan.video_id if primary_scan else None)
+        )
+
     async with TrelloClient() as tc:
         # Auto-discover IDs by name if env didn't set them.
         if not target_board_id and cfg.new_board_name:
@@ -158,50 +178,21 @@ async def push_to_trello(case_id: int, body: PushBody | None = None) -> dict[str
             target_list_id = lst["id"]
             await runtime_cfg.patch({"new_list_id": target_list_id})
 
-        # Last-mile dedup against cached cards on the new board only.
-        async with session_scope() as session:
-            cached = await TrelloRepo(session).all_cached([target_board_id])
-        for tc_card in cached:
-            if fuzzy.is_duplicate(
-                fuzzy.CaseStub(
-                    defendant_name=case.defendant_name,
-                    victim_name=case.victim_name,
-                    state=case.state,
-                    year=case.year,
-                ),
-                fuzzy.CaseStub(
-                    defendant_name=tc_card.parsed_defendant,
-                    victim_name=tc_card.parsed_victim,
-                    state=tc_card.parsed_state,
-                    year=tc_card.parsed_year,
-                ),
-            ):
+        # Last-mile dedup: live Trello search for the video ID on the new board.
+        if video_id and target_board_id:
+            try:
+                hits = await tc.search_cards_for_video(video_id, [target_board_id])
+            except Exception:  # noqa: BLE001 — never let dedup failure block a push
+                hits = []
+            if hits:
+                existing = hits[0]
                 async with session_scope() as session:
                     await CaseRepo(session).update_status(case_id, "pushed_to_trello")
                 return {
                     "status": "deduped_against_existing",
-                    "trello_card_id": tc_card.trello_card_id,
+                    "trello_card_id": existing.get("id"),
+                    "trello_url": existing.get("url"),
                 }
-
-        # Build description + create.
-        from sqlalchemy import select
-        from interrogation_pipeline.store.models import (
-            CaseVideo,
-            ScanResult as SRModel,
-        )
-
-        async with session_scope() as session:
-            primary_scan = await session.get(SRModel, case.primary_scan_id)
-            cv_row = (
-                await session.execute(
-                    select(CaseVideo.video_id).where(CaseVideo.case_id == case.id)
-                )
-            ).first()
-            video_id = (
-                cv_row[0]
-                if cv_row
-                else (primary_scan.video_id if primary_scan else None)
-            )
 
         desc = build_card_description(
             defendant=case.defendant_name,

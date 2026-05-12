@@ -99,6 +99,38 @@ class TrelloClient:
                 return lst
         return None
 
+    async def search_cards_for_video(
+        self, video_id: str, board_ids: list[str]
+    ) -> list[dict[str, Any]]:
+        """Find any card on the given boards whose description references this
+        YouTube video.
+
+        Used for dedup: if `video_id` already appears on either board, the
+        case has been handled. Per Trello's /search API, query=<11-char ID>
+        matches any card containing that substring in name/desc/comments.
+        """
+        if not video_id or not board_ids:
+            return []
+        cards = await self._request(
+            "GET",
+            "/search",
+            params={
+                "query": video_id,
+                "modelTypes": "cards",
+                "idBoards": ",".join(board_ids),
+                "card_fields": "name,desc,idBoard,idList,url,closed",
+                "cards_limit": 50,
+                "partial": "false",
+            },
+        )
+        if not cards:
+            return []
+        # /search returns {"cards": [...], "actions": [...], ...}
+        found = cards.get("cards", []) if isinstance(cards, dict) else []
+        # Trello's full-text search can occasionally return loose matches;
+        # confirm the 11-char ID is actually present in name+desc.
+        return [c for c in found if video_id in (c.get("desc") or "") or video_id in (c.get("name") or "")]
+
     # ──── card I/O ────
     async def list_all_cards(
         self,
