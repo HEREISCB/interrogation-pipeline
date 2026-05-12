@@ -270,6 +270,11 @@ class RunRepo:
     async def get(self, run_id: int) -> Optional[Run]:
         return await self.s.get(Run, run_id)
 
+    async def any_running(self) -> Optional[Run]:
+        """Return any run currently in status='running', if one exists."""
+        q = select(Run).where(Run.status == "running").order_by(Run.started_at.desc()).limit(1)
+        return (await self.s.execute(q)).scalar_one_or_none()
+
     async def latest(self) -> Optional[Run]:
         q = select(Run).order_by(Run.started_at.desc()).limit(1)
         return (await self.s.execute(q)).scalar_one_or_none()

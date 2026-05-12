@@ -43,6 +43,7 @@ from interrogation_pipeline.store.db import session_scope
 from interrogation_pipeline.store.repos import (
     CaseRepo,
     ChannelRepo,
+    ConfigRepo,
     CookieHealthRepo,
     RunRepo,
     ScanResultRepo,
@@ -635,6 +636,9 @@ def _looks_like_trello_id(value: str) -> bool:
     return all(c in "0123456789abcdefABCDEF" for c in v)
 
 
+_TRELLO_CACHE_TTL_HOURS = 6
+
+
 async def _phase_refresh_trello_cache(run_id: int) -> int:
     """Pull all cards from old + new boards into trello_card_cache for dedup.
 
@@ -643,10 +647,33 @@ async def _phase_refresh_trello_cache(run_id: int) -> int:
     it, push-time dedup still works (it queries Trello directly).
 
     Auto-discovers board IDs by name when only the name is configured.
+
+    Skips the (slow, multi-minute) full pagination if the cache was last
+    refreshed within the last TTL window. Boards with 5k+ cards make this
+    refresh expensive; once a day is plenty for dedup purposes.
     """
     cfg = await runtime_cfg.load()
     if not env_settings.trello_token:
         return 0
+
+    # Freshness check — skip the pagination entirely if last refresh is recent.
+    async with session_scope() as session:
+        last_synced_iso = await ConfigRepo(session).get("trello_cache_synced_at", "")
+    if last_synced_iso:
+        try:
+            last_dt = datetime.fromisoformat(last_synced_iso)
+            if datetime.now(UTC) - last_dt < timedelta(hours=_TRELLO_CACHE_TTL_HOURS):
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"cache refreshed {last_synced_iso} (< {_TRELLO_CACHE_TTL_HOURS}h ago) — skipping. "
+                    f"Push-time dedup still queries Trello directly.",
+                    level="info",
+                )
+                return 0
+        except ValueError:
+            pass  # malformed timestamp — fall through and refresh
+
     total = 0
     async with TrelloClient() as tc:
         boards: list[tuple[str, str]] = []
@@ -694,6 +721,7 @@ async def _phase_refresh_trello_cache(run_id: int) -> int:
             await runtime_cfg.patch({f"{label}_board_id": resolved_id})
             boards.append((label, resolved_id))
 
+        succeeded = False
         for label, bid in boards:
             try:
                 cards = await tc.list_all_cards(bid, include_archived=True)
@@ -701,6 +729,7 @@ async def _phase_refresh_trello_cache(run_id: int) -> int:
                 async with session_scope() as session:
                     await TrelloRepo(session).replace_cache_for_board(bid, parsed)
                 total += len(cards)
+                succeeded = True
             except Exception as e:  # noqa: BLE001
                 await _log(
                     run_id,
@@ -709,6 +738,12 @@ async def _phase_refresh_trello_cache(run_id: int) -> int:
                     f"Continuing without pre-cached dedup for this board.",
                     level="warn",
                 )
+
+    if succeeded:
+        async with session_scope() as session:
+            await ConfigRepo(session).set(
+                "trello_cache_synced_at", datetime.now(UTC).isoformat(timespec="seconds")
+            )
     return total
 
 

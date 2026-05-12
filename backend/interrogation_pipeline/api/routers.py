@@ -384,10 +384,25 @@ async def trigger_run(pipeline: Optional[str] = None) -> dict[str, Any]:
     """Kick a run NOW for one pipeline (default P4) or all if pipeline=ALL.
 
     Runs in the background; poll /api/runs for status.
+
+    Refuses to start a second run if one is already in flight — concurrent
+    runs each re-paginate the Trello board cache (5k+ cards) in parallel
+    for no benefit and risk Trello rate-limiting.
     """
     import asyncio
 
     from interrogation_pipeline.scheduler.scheduler import trigger_now
+
+    async with session_scope() as session:
+        existing = await RunRepo(session).any_running()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"run #{existing.id} is still in phase '{existing.phase}'. "
+                f"Wait for it to finish or open the Runs page to inspect it."
+            ),
+        )
 
     target: Optional[str]
     if pipeline is None or pipeline == "":
