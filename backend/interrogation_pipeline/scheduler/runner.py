@@ -132,12 +132,18 @@ async def _phase_yt_totals(run_id: int, pipeline: str | None) -> dict[str, int]:
 
 
 async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None = None) -> dict[str, int]:
-    """List each active channel's recent uploads via yt-dlp --flat-playlist
-    and insert new pending VideoStubs.
+    """List each active channel's recent uploads via yt-dlp and insert new
+    pending VideoStubs — strictly limited to the past `lookback_hours`.
 
     Why not RSS? YouTube returns 404 on /feeds/videos.xml from most residential
     and datacenter IPs as of 2026-05. yt-dlp uses the innertube API which is
-    not subject to the same block. One call per channel, metadata-only, ~2s.
+    not subject to the same block.
+
+    Date filtering happens INSIDE yt-dlp via --break-match-filters — the
+    walker stops as soon as it hits a video older than the cutoff, so a
+    channel with one new upload today triggers ~2 metadata fetches, not 20.
+    The post-hoc ISO filter below is a precision backstop (yt-dlp's filter
+    is YYYYMMDD-granular).
     """
     from interrogation_pipeline.scrape.ytdlp import enumerate_uploads
     from interrogation_pipeline.discovery.rss import resolve_channel_id
@@ -201,6 +207,7 @@ async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None
                 cookies_path=Path(ch.cookies_path),
                 proxy=proxy,
                 limit=per_channel_limit,
+                hours_back=lookback_hours,
             )
         except Exception as e:  # noqa: BLE001
             counts["ytdlp_failed"] += 1

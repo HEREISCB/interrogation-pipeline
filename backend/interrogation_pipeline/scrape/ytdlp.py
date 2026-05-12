@@ -203,7 +203,8 @@ async def enumerate_uploads(
     cookies_path: Path,
     proxy: ProxySession,
     limit: int = 50,
-    timeout: int = 60,
+    hours_back: int | None = None,
+    timeout: int = 120,
 ) -> list[dict[str, str]]:
     """List the N most recent uploads with id + title + upload_date.
 
@@ -211,17 +212,29 @@ async def enumerate_uploads(
         {"id": "abc123", "title": "Cop interrogates suspect…",
          "upload_date": "20260510", "upload_date_iso": "2026-05-10T00:00:00+00:00"}
 
+    When `hours_back` is set, asks yt-dlp to extract full per-video metadata
+    (drops --flat-playlist so upload_date populates) and use
+    --break-match-filters to STOP walking the channel as soon as it hits a
+    video older than the cutoff. Per-video extraction is slower (~1-2s each
+    instead of ~50ms with flat-playlist) but lets us honour the client's
+    "scrape past 24h only" expectation. The break-on-reject relies on
+    YouTube's /videos tab being newest-first, which holds for every channel
+    we've tested. Lazy mode keeps the playlist iterator from prefetching.
+
+    When `hours_back` is None, falls back to --flat-playlist (cheap, no
+    dates) for callers that don't need date filtering (e.g. count_uploads
+    or one-off bulk listings).
+
     Used as the primary discovery method (RSS feeds are blocked by YouTube
-    on many residential/datacenter IPs). One yt-dlp call per channel,
-    metadata-only — no captions/audio/video.
+    on many residential/datacenter IPs).
     """
     import json as _json
+    from datetime import UTC, datetime, timedelta
 
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
     cmd = [
         YT_DLP_BIN,
         url,
-        "--flat-playlist",
         "--simulate",
         "--no-warnings",
         "--no-check-certificates",
@@ -233,6 +246,20 @@ async def enumerate_uploads(
         "--print", "%(.{id,title,upload_date,timestamp})j",
         "--quiet",
     ]
+    if hours_back is not None:
+        # yt-dlp's --match-filters compares fields with simple operators.
+        # YYYYMMDD granularity (day, not second) is intentionally loose —
+        # better to over-capture by a few hours than miss a midnight upload.
+        # The runner does a precise post-hoc ISO comparison anyway.
+        cutoff_date = (
+            datetime.now(UTC) - timedelta(hours=hours_back)
+        ).strftime("%Y%m%d")
+        cmd.extend([
+            "--lazy-playlist",
+            "--break-match-filters", f"upload_date >= {cutoff_date}",
+        ])
+    else:
+        cmd.append("--flat-playlist")
     if proxy.proxy_url:
         cmd.extend(["--proxy", proxy.proxy_url])
     rc, stdout, stderr = await _run(cmd, timeout=timeout)
