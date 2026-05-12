@@ -47,7 +47,7 @@ DEFAULTS: dict[str, Any] = {
     "old_board_id": "",
     "new_board_id": "",
     "new_list_id": "",
-    "prompt_version": "v2-homicide-2026-05",
+    "prompt_version": "v3-strict-homicide-2026-05",
     "weekly_reconcile_dow": 0,        # 0=Mon
     "display_timezone": "Asia/Kolkata",
     # Banned for FOIA — not skipped, just badge'd on the dashboard so the user

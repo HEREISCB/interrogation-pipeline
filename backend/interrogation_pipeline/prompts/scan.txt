@@ -2,35 +2,69 @@ You are analyzing a YouTube video transcript to find HOMICIDE cases for
 a true-crime channel that publishes interrogation, bodycam, and related
 police footage.
 
+Your job is to be a STRICT classifier. The downstream pipeline assumes
+that everything you accept is genuinely worth a human reviewer's time.
+False positives cost ~$0.03 each in downstream Tavily/Haiku verification
+calls AND create noise that buries the real cases. **When in doubt,
+reject.**
+
 ═══════════════════════════════════════════════════════════════════════
-STEP 1 — MANDATORY HOMICIDE CHECK (the ONLY rejection criterion)
+STEP 1 — HOMICIDE CHECK
 ═══════════════════════════════════════════════════════════════════════
 
-ACCEPT if the case involves a death caused by another person, including:
-- murder, attempted murder, manslaughter, homicide
-- vehicular homicide / DUI causing death
-- capital murder, felony murder
-- fatal shooting, fatal stabbing, fatal beating
-- fatal child abuse, fatal neglect, child death at hands of caregiver
-- death during commission of another crime (robbery-homicide, etc.)
-- suspicious death being investigated as homicide
-- "killed", "deceased victim", "pronounced dead at scene", "died from
-  injuries" — implicit references count if context is clearly criminal
+ACCEPT only if ALL three conditions are met:
 
-REJECT ONLY if there is NO death involved, e.g.:
-- theft, robbery, fraud (no death)
-- DUI / traffic stop with no fatality
-- assault, domestic dispute with no fatality
-- drug possession, weapons charges alone
-- mental health calls, welfare checks with no death
-- civil disputes, trespassing
+  (A) The video's PRIMARY subject is a specific homicide case (not a
+      generic news roundup, not a passing mention, not a different
+      crime where someone happens to die in the background).
 
-DO NOT reject for missing interrogation footage. Bodycam-only cases are
-ACCEPTED. The presence/absence of interrogation only affects categorization
-in Step 2, never rejection.
+  (B) The transcript contains EXPLICIT language about a death that is
+      the focus of the investigation. Acceptable evidence includes:
+      "murder", "homicide", "killed [name]", "shot and killed",
+      "stabbed to death", "pronounced dead", "found dead", "fatal
+      [shooting/stabbing/beating]", "manslaughter charge", "death
+      caused by [person]", "vehicular homicide".
 
-If you are uncertain whether someone died, lean toward ACCEPT and flag
-it as "interrogation_unsure".
+  (C) You can identify a specific defendant OR victim by name in the
+      transcript. If neither name appears anywhere, REJECT — this
+      indicates the video is generic commentary, not a real case.
+
+REJECT (do not over-think these — they are common and obvious):
+
+  - Traffic stops, DUI arrests, drunk driving (no fatality)
+  - Theft, robbery, fraud, burglary (no death)
+  - Assault, domestic violence, battery (suspect/victim survived)
+  - Drug arrests, weapons charges, gun-running (no death)
+  - Mental health calls, welfare checks, suicide calls
+  - Civil disputes, trespassing, eviction, road rage (non-fatal)
+  - Police chase that ends without anyone dying
+  - Officer-involved shootings where the suspect is alive and being
+    charged with non-homicide offenses (assault on officer, etc.)
+  - Generic crime commentary, recap channels, news roundups that
+    mention multiple cases briefly
+  - Videos about laws / sentencing reform / commentary on a category
+    rather than one specific case
+  - Officer being interrogated / disciplinary investigation of officers
+  - Body found but no investigation, no defendant, no criminal charge
+  - Cold case discussion with no active prosecution
+  - DUI/vehicular case where it is unclear if anyone died
+
+The word "dead" or "died" or "killed" alone is NOT enough. A traffic
+stop video where the officer says "you could have killed someone
+driving like that" is REJECTED.
+
+═══════════════════════════════════════════════════════════════════════
+DECISION RULE
+═══════════════════════════════════════════════════════════════════════
+
+Before you accept, internally answer:
+  1. Is there a specific dead victim referred to by name or clear
+     identification in the transcript?
+  2. Is the defendant being investigated/charged for causing that death?
+  3. Could you write a one-sentence headline like "Defendant X killed
+     Victim Y" using facts from THIS transcript?
+
+If you cannot answer YES to all three, REJECT with a brief reason.
 
 ═══════════════════════════════════════════════════════════════════════
 STEP 2 — CATEGORIZE

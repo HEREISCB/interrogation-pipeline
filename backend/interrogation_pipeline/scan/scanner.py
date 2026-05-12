@@ -231,9 +231,29 @@ async def scan_transcript(
             )
 
         accepted = bool(data.get("has_interrogation"))
+        # Sanity gate: an accepted homicide case must have either a defendant
+        # OR a victim name. A "yes" with neither identified is Haiku rubber-
+        # stamping on a generic transcript — we override to reject so it
+        # doesn't reach the downstream verify/dedup pipeline (each false
+        # positive costs ~$0.03 in Tavily + Haiku verify calls).
+        rejection_override: str | None = None
+        if accepted:
+            defendant = _coerce_to_str(data.get("defendant_name")) or ""
+            victim = _coerce_to_str(data.get("victim_name")) or ""
+            d_clean = defendant.strip().lower()
+            v_clean = victim.strip().lower()
+            PLACEHOLDER = {"", "unknown", "n/a", "na", "not found", "not specified",
+                           "not stated", "not mentioned", "not provided", "...", "none"}
+            if d_clean in PLACEHOLDER and v_clean in PLACEHOLDER:
+                accepted = False
+                rejection_override = (
+                    "sanity gate: accepted but no defendant or victim name "
+                    "identified — Haiku rubber-stamping a non-specific transcript"
+                )
+
         norm = {
             "has_homicide": accepted,
-            "rejection_reason": data.get("rejection_reason"),
+            "rejection_reason": rejection_override or data.get("rejection_reason"),
             "category": data.get("category"),
             "drama_rating": data.get("drama_rating"),
             "drama_breakdown": data.get("drama_breakdown"),
