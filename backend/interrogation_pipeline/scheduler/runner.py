@@ -637,6 +637,13 @@ def _looks_like_trello_id(value: str) -> bool:
 
 
 _TRELLO_CACHE_TTL_HOURS = 6
+# Per-board cap. Newest cards matter most for dedup; if a board has more than
+# this, we cache the newest N and rely on push-time Trello queries for the
+# rest. Prevents the pipeline from spending hours paginating huge boards.
+_TRELLO_CACHE_MAX_CARDS_PER_BOARD = 10_000
+# Hard deadline across the whole phase (across both boards). Anything not
+# fetched in time is left out; push-time dedup still queries Trello directly.
+_TRELLO_CACHE_DEADLINE_SECONDS = 120
 
 
 async def _phase_refresh_trello_cache(run_id: int) -> int:
@@ -722,14 +729,49 @@ async def _phase_refresh_trello_cache(run_id: int) -> int:
             boards.append((label, resolved_id))
 
         succeeded = False
+        deadline = datetime.now(UTC) + timedelta(seconds=_TRELLO_CACHE_DEADLINE_SECONDS)
         for label, bid in boards:
+            if datetime.now(UTC) >= deadline:
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"hit {_TRELLO_CACHE_DEADLINE_SECONDS}s phase deadline before "
+                    f"reaching {label} board {bid}. Push-time dedup will still "
+                    f"query Trello directly for any case sent to it.",
+                    level="warn",
+                )
+                break
             try:
-                cards = await tc.list_all_cards(bid, include_archived=True)
+                cards = await asyncio.wait_for(
+                    tc.list_all_cards(
+                        bid,
+                        include_archived=True,
+                        max_cards=_TRELLO_CACHE_MAX_CARDS_PER_BOARD,
+                    ),
+                    timeout=(deadline - datetime.now(UTC)).total_seconds(),
+                )
                 parsed = [parse_card_for_dedup(c) for c in cards]
                 async with session_scope() as session:
                     await TrelloRepo(session).replace_cache_for_board(bid, parsed)
                 total += len(cards)
                 succeeded = True
+                if len(cards) >= _TRELLO_CACHE_MAX_CARDS_PER_BOARD:
+                    await _log(
+                        run_id,
+                        "trello_cache",
+                        f"{label} board {bid}: cached newest {len(cards)} cards "
+                        f"(per-board cap). Older cards aren't in the pre-cache; "
+                        f"push-time dedup still queries Trello directly.",
+                        level="info",
+                    )
+            except asyncio.TimeoutError:
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"timed out fetching {label} board {bid} within the phase "
+                    f"deadline. Partial cache (if any) was discarded.",
+                    level="warn",
+                )
             except Exception as e:  # noqa: BLE001
                 await _log(
                     run_id,

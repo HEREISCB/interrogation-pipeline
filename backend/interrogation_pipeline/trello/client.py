@@ -101,9 +101,19 @@ class TrelloClient:
 
     # ──── card I/O ────
     async def list_all_cards(
-        self, board_id: str, *, include_archived: bool = True
+        self,
+        board_id: str,
+        *,
+        include_archived: bool = True,
+        max_cards: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Paginated fetch of every card on a board (active + closed by default)."""
+        """Paginated fetch of cards on a board.
+
+        Walks the board from newest → oldest. `max_cards` caps the total so
+        we don't burn minutes paginating boards that auto-import millions
+        of items. Newest cards matter most for dedup against just-discovered
+        cases anyway; older history is a nice-to-have.
+        """
         out: list[dict[str, Any]] = []
         before: str | None = None
         while True:
@@ -119,6 +129,8 @@ class TrelloClient:
                 break
             out.extend(page)
             if len(page) < PAGE_LIMIT:
+                break
+            if max_cards is not None and len(out) >= max_cards:
                 break
             before = page[-1]["id"]
         return out
