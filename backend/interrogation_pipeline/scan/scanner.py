@@ -10,6 +10,7 @@ Returns a typed pydantic model. Handles:
 from __future__ import annotations
 
 import json
+import re
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -97,23 +98,84 @@ def _load_prompt(path: Path | None = None) -> str:
     return p.read_text(encoding="utf-8")
 
 
+_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL | re.IGNORECASE)
+
+
+def _unwrap_array(data: Any) -> dict[str, Any]:
+    """If Haiku ignored the 'one object per response' instruction and returned
+    an array, unwrap to the first dict element so the caller still works."""
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                return item
+        raise json.JSONDecodeError("response is a list with no dict items", "", 0)
+    if not isinstance(data, dict):
+        raise json.JSONDecodeError(f"expected dict, got {type(data).__name__}", "", 0)
+    return data
+
+
 def _parse_response(body: str) -> dict[str, Any]:
-    """Extract the JSON object Haiku returns, tolerating leading/trailing prose."""
+    """Extract the JSON object Haiku returns, tolerating markdown fences and prose.
+
+    Handles three observed failure modes:
+      1. Response wrapped in ```json ... ``` markdown fence
+      2. Closing fence missing (response truncated)
+      3. JSON preceded or followed by prose
+    """
     body = body.strip()
-    if body.startswith("```"):
-        body = body.strip("`")
+
+    # 1. If wrapped in a complete markdown fence, lift the content out.
+    m = _FENCE_RE.search(body)
+    if m:
+        body = m.group(1).strip()
+    elif body.startswith("```"):
+        # 2. Incomplete fence (opening but no closing — usually a truncated reply).
+        body = body[3:]
         if body.lower().startswith("json"):
-            body = body[4:].strip()
-    # Accept either a clean JSON or one wrapped in some prose.
+            body = body[4:]
+        body = body.lstrip("\n").rstrip()
+        # Strip a stray trailing ``` if it slipped in
+        if body.endswith("```"):
+            body = body[:-3].rstrip()
+
     try:
-        return json.loads(body)
+        return _unwrap_array(json.loads(body))
     except json.JSONDecodeError:
-        # Find first { … last } and try again.
-        start = body.find("{")
-        end = body.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(body[start : end + 1])
-        raise
+        pass
+
+    # 3. Walk forward from the first `{`, balancing braces (respecting strings)
+    # so we can pull out a clean JSON object embedded in prose.
+    start = body.find("{")
+    if start < 0:
+        raise json.JSONDecodeError("no '{' found", body, 0)
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(body)):
+        c = body[i]
+        if escape:
+            escape = False
+            continue
+        if c == "\\":
+            escape = True
+            continue
+        if c == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return _unwrap_array(json.loads(body[start : i + 1]))
+
+    # Fall back to old behaviour (first '{' to last '}') for the truncated case.
+    end = body.rfind("}")
+    if end > start:
+        return _unwrap_array(json.loads(body[start : end + 1]))
+    raise json.JSONDecodeError("unbalanced braces", body, start)
 
 
 async def scan_transcript(
@@ -140,7 +202,10 @@ async def scan_transcript(
         try:
             resp = await client.messages.create(
                 model=model,
-                max_tokens=2048,
+                # Bumped from 2048 — the full schema (footage_types, drama_breakdown,
+                # 200-word summary) sometimes ran over and got truncated mid-JSON,
+                # which the parser couldn't recover from.
+                max_tokens=4096,
                 system=prompt,
                 messages=[{"role": "user", "content": user_block}],
             )

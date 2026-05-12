@@ -107,3 +107,9 @@ If ACCEPTED:
      "description": "...", "approx_timestamp": "..."}
   ]
 }
+
+OUTPUT RULES (strict):
+- Return RAW JSON only. No markdown code fences. No leading "```json" or trailing "```".
+- No prose before or after the JSON.
+- Exactly one top-level JSON object per response. Never an array.
+- Start your response with the character `{` and end with `}`.
