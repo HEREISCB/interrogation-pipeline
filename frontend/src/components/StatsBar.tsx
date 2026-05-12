@@ -11,6 +11,12 @@ export default function StatsBar() {
   });
   if (!data) return <div className="h-20" />;
 
+  // captioned in the API = videos with status in (captioned, scanned).
+  // The "ready to scan" tile shows captioned-but-not-yet-scanned so the user
+  // can see work-in-progress that hasn't been classified yet (e.g. after a
+  // wipe-and-rescan, this is where the 514 transcripts appear before scan).
+  const captionsReady = Math.max(0, data.captioned - data.scanned);
+
   const cells: {
     label: string;
     value: number;
@@ -30,10 +36,16 @@ export default function StatsBar() {
       hint: "Videos the pipeline has seen across all runs",
     },
     {
+      label: "Captions ready to scan",
+      value: captionsReady,
+      tone: captionsReady > 0 ? "accent" : undefined,
+      hint: "Captions downloaded but not yet run through Haiku. Will be processed on the next scan phase.",
+    },
+    {
       label: "Captions scanned",
       value: data.scanned,
       pct: pct(data.scanned, data.youtube_total),
-      hint: "Transcripts run through Haiku at least once",
+      hint: "Transcripts already run through Haiku at least once",
     },
     {
       label: "Flagged homicide (all-time)",
@@ -66,7 +78,7 @@ export default function StatsBar() {
           (every run since first start; for per-day breakdown see Calendar)
         </span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         {cells.map((c) => (
           <div
             key={c.label}

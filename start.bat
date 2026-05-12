@@ -68,27 +68,27 @@ pushd backend
 ".venv\Scripts\python.exe" -m pip install -e ".[dev]" --quiet 2>nul
 popd
 
-REM ── Build frontend if missing ─────────────────────────────────
-if not exist "backend\interrogation_pipeline\static\index.html" (
-    echo Building dashboard ^(2-5 min on first build^)...
-    pushd frontend
-    if not exist "node_modules\@types\node" (
-        echo Installing npm packages...
-        call npm install --no-audit --no-fund
-    )
-    call npm run build
-    if errorlevel 1 (
-        popd
-        echo.
-        echo ============================================
-        echo  Dashboard build FAILED. See messages above.
-        echo  Common fix: run 'npm install' in frontend^\
-        echo ============================================
-        pause
-        exit /b 1
-    )
-    popd
+REM ── Always rebuild the frontend on startup ───────────────────────
+REM Cheap (~3-5 sec with cached node_modules) and means `git pull`
+REM actually picks up dashboard updates without manual `npm run build`.
+echo Building dashboard...
+pushd frontend
+if not exist "node_modules\@types\node" (
+    echo Installing npm packages ^(first time only, ~2 min^)...
+    call npm install --no-audit --no-fund
 )
+call npm run build
+if errorlevel 1 (
+    popd
+    echo.
+    echo ============================================
+    echo  Dashboard build FAILED. See messages above.
+    echo  Common fix: run 'npm install' in frontend^\
+    echo ============================================
+    pause
+    exit /b 1
+)
+popd
 
 REM Verify the build actually landed where the server expects it
 if not exist "backend\interrogation_pipeline\static\index.html" (

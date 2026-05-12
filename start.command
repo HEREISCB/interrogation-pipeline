@@ -73,23 +73,23 @@ fi
 echo "Syncing Python dependencies..."
 (cd backend && ./.venv/bin/python -m pip install -e ".[dev]" --quiet)
 
-# ── Build frontend if missing ─────────────────────────────────
-if [ ! -f "backend/interrogation_pipeline/static/index.html" ]; then
-    echo "Building dashboard (2-5 min on first build)..."
-    pushd frontend >/dev/null
-    if [ ! -d "node_modules/@types/node" ]; then
-        echo "Installing npm packages..."
-        npm install --no-audit --no-fund
-    fi
-    npm run build || {
-        popd >/dev/null
-        echo ""
-        echo "Dashboard build failed. See messages above."
-        read -r -p "Press enter to close..."
-        exit 1
-    }
-    popd >/dev/null
+# ── Always rebuild the frontend on startup ─────────────────────
+# Cheap (~3-5 sec with cached node_modules) and means `git pull`
+# actually picks up dashboard updates without manual `npm run build`.
+echo "Building dashboard..."
+pushd frontend >/dev/null
+if [ ! -d "node_modules/@types/node" ]; then
+    echo "Installing npm packages (first time only, ~2 min)..."
+    npm install --no-audit --no-fund
 fi
+npm run build || {
+    popd >/dev/null
+    echo ""
+    echo "Dashboard build failed. See messages above."
+    read -r -p "Press enter to close..."
+    exit 1
+}
+popd >/dev/null
 
 # Verify the build actually landed
 if [ ! -f "backend/interrogation_pipeline/static/index.html" ]; then
