@@ -641,23 +641,60 @@ async def _phase_refresh_trello_cache(run_id: int) -> int:
     Fail-soft: a single bad board ID, transient network error, or 404 should
     NOT kill the whole daily run. The dedup cache is an optimization — without
     it, push-time dedup still works (it queries Trello directly).
+
+    Auto-discovers board IDs by name when only the name is configured.
     """
     cfg = await runtime_cfg.load()
     if not env_settings.trello_token:
         return 0
     total = 0
     async with TrelloClient() as tc:
-        for label, bid in (("old", cfg.old_board_id), ("new", cfg.new_board_id)):
-            if not _looks_like_trello_id(bid):
-                if bid:  # only warn if user set _something_ that looks wrong
-                    await _log(
-                        run_id,
-                        "trello_cache",
-                        f"skipping {label} board: '{bid}' is not a valid Trello board ID "
-                        f"(expected 24-char hex). Edit backend/.env or leave blank to skip dedup against this board.",
-                        level="warn",
-                    )
+        boards: list[tuple[str, str]] = []
+        for label, bid, bname in (
+            ("old", cfg.old_board_id, cfg.old_board_name),
+            ("new", cfg.new_board_id, cfg.new_board_name),
+        ):
+            if _looks_like_trello_id(bid):
+                boards.append((label, bid))
                 continue
+            if bid:  # user typed something that doesn't look like an ID
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"skipping {label} board: '{bid}' is not a valid Trello board ID "
+                    f"(expected 24-char hex). Edit backend/.env or leave blank to "
+                    f"auto-discover by name.",
+                    level="warn",
+                )
+                continue
+            # No ID set — try to resolve by name.
+            if not bname:
+                continue
+            try:
+                board = await tc.find_board_by_name(bname)
+            except Exception as e:  # noqa: BLE001
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"lookup for {label} board '{bname}' failed: {str(e)[:200]}",
+                    level="warn",
+                )
+                continue
+            if not board:
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"{label} board '{bname}' not found on this Trello account — "
+                    f"skipping dedup against it. (Open the board and copy the 24-char "
+                    f"ID from trello.com/b/<shortcode>.json if auto-discover keeps failing.)",
+                    level="warn",
+                )
+                continue
+            resolved_id = board["id"]
+            await runtime_cfg.patch({f"{label}_board_id": resolved_id})
+            boards.append((label, resolved_id))
+
+        for label, bid in boards:
             try:
                 cards = await tc.list_all_cards(bid, include_archived=True)
                 parsed = [parse_card_for_dedup(c) for c in cards]
