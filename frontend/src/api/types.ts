@@ -81,6 +81,7 @@ export interface SettingsResponse {
   scan_concurrency: number;
   verify_concurrency: number;
   video_max_attempts: number;
+  discover_per_channel_limit: number;
   proxy_blacklist_minutes: number;
   proxy_mode: "auto" | "always" | "never";
   proxy_retry_direct_minutes: number;

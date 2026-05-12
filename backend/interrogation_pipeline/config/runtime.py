@@ -17,10 +17,15 @@ from interrogation_pipeline.store.repos import ConfigRepo
 DEFAULTS: dict[str, Any] = {
     "schedule_cron": None,            # filled at first start from env
     "lookback_hours": None,           # filled at first start from env
-    "scrape_concurrency": 3,
+    "scrape_concurrency": 8,
     "scan_concurrency": 5,
     "verify_concurrency": 3,
     "video_max_attempts": 5,
+    # Discover phase: how many recent uploads to enumerate per channel each
+    # run. Lower = faster first-run; higher = more chance of catching back-
+    # catalog if a channel uploads a lot. After first run, dedup by video.id
+    # means subsequent runs are cheap regardless of this value.
+    "discover_per_channel_limit": 20,
     "proxy_blacklist_minutes": 30,
     # Adaptive proxy mode:
     #   "auto"    — try direct (no proxy) first; fall back to proxy if YouTube
@@ -61,6 +66,7 @@ class RuntimeConfig:
     scan_concurrency: int
     verify_concurrency: int
     video_max_attempts: int
+    discover_per_channel_limit: int
     proxy_blacklist_minutes: int
     proxy_mode: str
     proxy_retry_direct_minutes: int

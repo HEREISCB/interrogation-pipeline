@@ -142,6 +142,9 @@ async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None
     from interrogation_pipeline.scrape.ytdlp import enumerate_uploads
     from interrogation_pipeline.discovery.rss import resolve_channel_id
 
+    cfg = await runtime_cfg.load()
+    per_channel_limit = max(1, cfg.discover_per_channel_limit)
+
     pool = WebshareSessionPool()
     async with session_scope() as session:
         chans = await ChannelRepo(session).list_active(pipeline=pipeline)
@@ -197,7 +200,7 @@ async def _phase_discover(run_id: int, lookback_hours: int, pipeline: str | None
                 target_id,
                 cookies_path=Path(ch.cookies_path),
                 proxy=proxy,
-                limit=50,
+                limit=per_channel_limit,
             )
         except Exception as e:  # noqa: BLE001
             counts["ytdlp_failed"] += 1

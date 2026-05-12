@@ -64,12 +64,13 @@ export default function Settings() {
 
       <section className="mb-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-soft mb-3">
-          Concurrency
+          Concurrency &amp; discover limits
         </h2>
         <Field name="scrape_concurrency" label="Scrape (yt-dlp)" type="number" />
         <Field name="scan_concurrency" label="Scan (Haiku)" type="number" />
         <Field name="verify_concurrency" label="Verify (Tavily)" type="number" />
         <Field name="video_max_attempts" label="Max retries per video" type="number" />
+        <Field name="discover_per_channel_limit" label="Videos per channel" type="number" />
         <Field name="proxy_blacklist_minutes" label="Proxy blacklist (min)" type="number" />
       </section>
 
