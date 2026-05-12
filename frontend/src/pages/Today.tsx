@@ -119,14 +119,23 @@ export default function Today() {
 
       <StatsBar />
 
+      <div className="mb-2 flex items-baseline gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-soft">
+          Cases from this run
+        </h2>
+        <span className="text-xs text-soft">
+          {t?.run_id ? `run #${t.run_id} · ${formatLocal(t.date_iso)}` : ""}
+        </span>
+      </div>
+
       {/* Accepted */}
       <section className="mb-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-soft mb-2">
-          Accepted ({accepted.length})
-        </h2>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-soft mb-2">
+          Accepted ({accepted.length}) — new, not yet on Trello
+        </h3>
         {accepted.length === 0 ? (
           <div className="border border-dashed border-line rounded-lg p-8 text-center text-soft text-sm">
-            No accepted cases yet. Once a daily run completes,
+            No accepted cases in this run. Once a daily run completes,
             confirmed-homicide cases appear here for review.
           </div>
         ) : (
@@ -141,9 +150,9 @@ export default function Today() {
       {/* Duplicate against new triage board */}
       {dupNew.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-soft mb-2">
-            Already on triage board ({dupNew.length})
-          </h2>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-soft mb-2">
+            Already on triage board (ULF) — {dupNew.length}
+          </h3>
           <div className="grid gap-3 opacity-75">
             {dupNew.map((c) => (
               <CaseCard key={c.id} c={c} />
@@ -160,7 +169,7 @@ export default function Today() {
             className="w-full text-left flex items-center justify-between border border-line rounded-md px-3 py-2 hover:bg-bg-soft text-sm"
           >
             <span className="font-semibold uppercase tracking-wide text-soft">
-              {dupOldOpen ? "▼" : "▶"} Already on main board ({dupOld.length})
+              {dupOldOpen ? "▼" : "▶"} Already on main board (FOIA Trials) — {dupOld.length}
             </span>
             <span className="text-xs text-soft">click to expand</span>
           </button>
@@ -181,7 +190,7 @@ export default function Today() {
           className="w-full text-left flex items-center justify-between border border-line rounded-md px-3 py-2 hover:bg-bg-soft text-sm"
         >
           <span className="font-semibold uppercase tracking-wide text-soft">
-            {rejectedOpen ? "▼" : "▶"} Rejected by AI ({rejected.length})
+            {rejectedOpen ? "▼" : "▶"} Rejected by AI in this run ({rejected.length})
           </span>
           <span className="text-xs text-soft">peace-of-mind check</span>
         </button>
