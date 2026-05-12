@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import StatsBar from "@/components/StatsBar";
+import PipelineState from "@/components/PipelineState";
 import CaseCard from "@/components/CaseCard";
 import RejectedRow from "@/components/RejectedRow";
 import { formatLocal } from "@/lib/format";
@@ -118,6 +119,11 @@ export default function Today() {
       )}
 
       <StatsBar />
+
+      <PipelineState
+        visibleCasesCount={accepted.length + dupNew.length + dupOld.length}
+        isRunning={isRunning}
+      />
 
       <div className="mb-2 flex items-baseline gap-2 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-soft">
