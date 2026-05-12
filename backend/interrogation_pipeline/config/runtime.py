@@ -87,14 +87,23 @@ async def seed_defaults() -> None:
     DEFAULTS["lookback_hours"] = (
         DEFAULTS["lookback_hours"] or env_settings.initial_lookback_hours
     )
+    # Only copy env values into defaults if they look real. Trello IDs are
+    # 24-char hex; anything else (empty, '...', sk-ant-..., or other example
+    # placeholders) gets treated as "not set" so auto-discovery kicks in.
+    def _clean_trello_id(v: str) -> str:
+        v = (v or "").strip()
+        if len(v) != 24:
+            return ""
+        return v if all(c in "0123456789abcdefABCDEF" for c in v) else ""
+
     DEFAULTS["old_board_id"] = (
-        DEFAULTS["old_board_id"] or env_settings.trello_old_board_id
+        DEFAULTS["old_board_id"] or _clean_trello_id(env_settings.trello_old_board_id)
     )
     DEFAULTS["new_board_id"] = (
-        DEFAULTS["new_board_id"] or env_settings.trello_new_board_id
+        DEFAULTS["new_board_id"] or _clean_trello_id(env_settings.trello_new_board_id)
     )
     DEFAULTS["new_list_id"] = (
-        DEFAULTS["new_list_id"] or env_settings.trello_new_list_id
+        DEFAULTS["new_list_id"] or _clean_trello_id(env_settings.trello_new_list_id)
     )
 
     async with session_scope() as session:
@@ -108,6 +117,13 @@ async def seed_defaults() -> None:
         # Promote stored value to the new default unless the user customized it.
         if existing.get("new_list_name") == "Ayush Snipe List":
             await repo.set("new_list_name", "Autoload")
+        # One-off scrub: early users may have seeded the literal '...' from
+        # .env.example into the config table. Wipe any stored Trello ID that
+        # isn't 24-char hex so auto-discovery can take over.
+        for key in ("old_board_id", "new_board_id", "new_list_id"):
+            stored = existing.get(key, "")
+            if stored and not _clean_trello_id(stored):
+                await repo.set(key, "")
 
 
 async def load() -> RuntimeConfig:

@@ -626,23 +626,52 @@ async def _phase_daily_counts(run_id: int) -> dict[str, int]:
     return counts
 
 
-async def _phase_refresh_trello_cache() -> int:
-    """Pull all cards from old + new boards into trello_card_cache for dedup."""
+def _looks_like_trello_id(value: str) -> bool:
+    """Trello board/list IDs are 24-char hex. Reject obvious placeholders
+    (empty, '...', dots-only, anything that isn't 24 hex chars)."""
+    v = (value or "").strip()
+    if len(v) != 24:
+        return False
+    return all(c in "0123456789abcdefABCDEF" for c in v)
+
+
+async def _phase_refresh_trello_cache(run_id: int) -> int:
+    """Pull all cards from old + new boards into trello_card_cache for dedup.
+
+    Fail-soft: a single bad board ID, transient network error, or 404 should
+    NOT kill the whole daily run. The dedup cache is an optimization — without
+    it, push-time dedup still works (it queries Trello directly).
+    """
     cfg = await runtime_cfg.load()
-    if not (cfg.old_board_id or cfg.new_board_id):
-        return 0
     if not env_settings.trello_token:
         return 0
     total = 0
     async with TrelloClient() as tc:
-        for bid in (cfg.old_board_id, cfg.new_board_id):
-            if not bid:
+        for label, bid in (("old", cfg.old_board_id), ("new", cfg.new_board_id)):
+            if not _looks_like_trello_id(bid):
+                if bid:  # only warn if user set _something_ that looks wrong
+                    await _log(
+                        run_id,
+                        "trello_cache",
+                        f"skipping {label} board: '{bid}' is not a valid Trello board ID "
+                        f"(expected 24-char hex). Edit backend/.env or leave blank to skip dedup against this board.",
+                        level="warn",
+                    )
                 continue
-            cards = await tc.list_all_cards(bid, include_archived=True)
-            parsed = [parse_card_for_dedup(c) for c in cards]
-            async with session_scope() as session:
-                await TrelloRepo(session).replace_cache_for_board(bid, parsed)
-            total += len(cards)
+            try:
+                cards = await tc.list_all_cards(bid, include_archived=True)
+                parsed = [parse_card_for_dedup(c) for c in cards]
+                async with session_scope() as session:
+                    await TrelloRepo(session).replace_cache_for_board(bid, parsed)
+                total += len(cards)
+            except Exception as e:  # noqa: BLE001
+                await _log(
+                    run_id,
+                    "trello_cache",
+                    f"could not refresh {label} board {bid}: {str(e)[:200]}. "
+                    f"Continuing without pre-cached dedup for this board.",
+                    level="warn",
+                )
     return total
 
 
@@ -673,7 +702,7 @@ async def run_daily(*, trigger: str = "scheduled", pipeline: str | None = "P4") 
 
         async with session_scope() as session:
             await RunRepo(session).set_phase(run_id, "trello_cache")
-        counts["trello_cards_cached"] = await _phase_refresh_trello_cache()
+        counts["trello_cards_cached"] = await _phase_refresh_trello_cache(run_id)
 
         async with session_scope() as session:
             await RunRepo(session).set_phase(run_id, "discover")
